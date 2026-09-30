@@ -1,0 +1,483 @@
+# Crestline Supply — Plant Simulator & Data Platform Spec
+
+> Working spec for the `crestline-supply` repo. This is the source of truth for design decisions.
+
+---
+
+## 1. Purpose
+
+Crestline Supply is a **fictional mid-market metal fabrication company** used as a running example for manufacturing data, AWS, and AI agents.
+
+The repo has two jobs:
+
+1. **Simulate a realistic plant and its messy systems.** A hidden "ground truth" simulation models what actually happened on the shop floor. Three fake interfaces (ERP, MES, machines) each expose a *partial, distorted* view of that truth, the way real mid-market systems do.
+2. **Build the data platform on AWS** that ingests those sources, cleans and joins them, and answers business questions (margin by line/shift, downtime, scrap attribution, traceability), eventually with an AI agent on top.
+
+The credibility of the example depends on the mess being *realistic*, not random. Every imperfection should be something a plant IT person or integrator would recognize.
+
+### Design principles
+
+- **Simulate the plant, then fake the interfaces.** Never generate interface data directly; always derive it from the ground truth.
+- **The answer key is hidden but measurable.** The truth is written to Parquet so we can score how well the pipelines reconstruct reality. Pipeline code must never read it.
+- **Every mess is a configurable knob.** One config file (`mess.yaml`) controls all imperfections. `mess_level: 0` is a clean plant for teaching; higher levels prove the pipeline.
+- **Deterministic.** Same seed + same config = identical output.
+- **Runs on a laptop.** Everything works locally with Docker Compose before it touches AWS.
+- **Vendor-neutral.** Interfaces are modeled on patterns common across mid-market ERPs, MES products, and PLC gateways. Never name or imitate a specific vendor's API.
+
+---
+
+## 2. The company
+
+| Attribute | Value |
+|---|---|
+| Company | Crestline Supply (company code `CRE`) |
+| Plant | Plant 10 (`P10`) |
+| Timezone | `America/Denver` (DST matters, see mess catalog) |
+| Products | Electrical enclosures, mounting brackets, custom panels |
+| Customers | HVAC, electrical, and industrial equipment makers |
+| Shifts | 1st: 06:00–14:30, 2nd: 14:30–23:00, Mon–Fri; each shift has a 10-min break, a 30-min meal, and a 10-min break; occasional Saturday OT (1st shift only) |
+| Volume | ~15–25 jobs released per day, quantities 10–500 (log-normal: most jobs are a few dozen pieces, a few run into the hundreds). Jobs are released at the ordered quantity plus a 5% scrap allowance, rounded up (the planner's standing rule); overs go to stock, shorts ship short |
+
+### 2.1 Customers (fictional)
+
+| Code | Name |
+|---|---|
+| ALP | Alpine Mechanical |
+| BAS | Basin HVAC Systems |
+| COR | Cordova Controls |
+| DRE | Delta Ridge Electric |
+| EVE | Everline Equipment |
+| FOX | Foxglove Industrial |
+| GPR | Granite Peak Refrigeration |
+| HAR | Harbor Automation |
+
+### 2.2 Materials
+
+| Material ID | Description | Cost/lb (USD) |
+|---|---|---|
+| CRS-14 | Cold-rolled steel, 14 ga | 0.62 |
+| CRS-16 | Cold-rolled steel, 16 ga | 0.64 |
+| AL-5052-12 | Aluminum 5052, 12 ga | 2.85 |
+| SS-304-16 | Stainless 304, 16 ga | 2.40 |
+
+Material arrives in **lots** (`LOT-<material>-<5 digits>`) with a supplier name and **heat number**. Each lot is ~2,000–6,000 lb. Jobs consume from the oldest open lot of the right material (FIFO), and a job may span two lots.
+
+### 2.3 Work centers and machines
+
+| Work center | Machine / station | Type | Interface generation |
+|---|---|---|---|
+| LASER | `LSR-01` fiber laser | Discrete, automated | Modern: Sparkplug B over MQTT |
+| DEBURR | `DB-01` manual station | Manual | None (MES scans only) |
+| BRAKE | `PB-01` press brake | Discrete | Mid-age: flat JSON via edge gateway `GW01` |
+| BRAKE | `PB-02` press brake | Discrete | Legacy: polled 16-bit counter via gateway `GW02` |
+| PEM | `PEM-01` hardware insertion press | Discrete | Legacy: polled 16-bit counter via gateway `GW02` |
+| POWDER | `PC-LINE` powder coat line | Continuous process | Process stream via gateway `GW03` |
+| ASSY | `AS-01` assembly, pack, final inspection | Manual | None (MES scans only) |
+
+### 2.4 Rates (used by ERP standard costing)
+
+| Work center | Machine burden $/hr | Labor $/hr |
+|---|---|---|
+| LASER | 145 | 38 |
+| DEBURR | 0 | 32 |
+| BRAKE | 85 | 38 |
+| PEM | 55 | 34 |
+| POWDER | 120 | 34 |
+| ASSY | 0 | 32 |
+
+### 2.5 Parts (starter set — expand to ~20)
+
+Standard times are **setup minutes / run minutes per piece**. POWDER run time is per piece but the line runs in racks (see §3.4).
+
+Prices are what a contract fabricator would quote: standard cost for a 25-piece lot (the median job size), i.e. material plus setup and run hours at the §2.4 rates, marked up to a 30% margin and rounded to the nearest $0.25. Smaller lots don't cover their setups and lose money even at standard; larger lots do better than 30%.
+
+| Part | Rev | Family | Material | Weight (lb) | Price | Routing (op: work center, setup/run) |
+|---|---|---|---|---|---|---|
+| ENC-2010 | B | ENC | CRS-16 | 6.8 | 23.50 | 10 LASER 15/0.8 · 20 DEBURR 0/0.5 · 30 BRAKE 25/1.2 · 40 PEM 10/0.4 · 50 POWDER 0/0.3 · 60 ASSY 5/2.0 |
+| ENC-2020 | A | ENC | CRS-14 | 9.4 | 29.75 | 10 LASER 15/1.1 · 20 DEBURR 0/0.6 · 30 BRAKE 30/1.6 · 40 PEM 10/0.5 · 50 POWDER 0/0.4 · 60 ASSY 5/2.5 |
+| ENC-3100 | C | ENC | SS-304-16 | 7.2 | 44.50 | 10 LASER 20/1.0 · 20 DEBURR 0/0.8 · 30 BRAKE 30/1.4 · 40 PEM 10/0.5 · 60 ASSY 5/2.2 |
+| ENC-4200 | A | ENC | AL-5052-12 | 4.1 | 33.00 | 10 LASER 15/0.9 · 20 DEBURR 0/0.7 · 30 BRAKE 25/1.3 · 50 POWDER 0/0.3 · 60 ASSY 5/1.8 |
+| BRK-1042 | C | BRK | CRS-14 | 1.2 | 7.75 | 10 LASER 10/0.25 · 20 DEBURR 0/0.2 · 30 BRAKE 20/0.35 · 50 POWDER 0/0.1 |
+| BRK-1050 | A | BRK | CRS-14 | 1.6 | 8.50 | 10 LASER 10/0.3 · 20 DEBURR 0/0.2 · 30 BRAKE 20/0.4 · 50 POWDER 0/0.1 |
+| BRK-1100 | B | BRK | CRS-16 | 0.9 | 6.50 | 10 LASER 10/0.2 · 30 BRAKE 15/0.3 · 50 POWDER 0/0.1 |
+| BRK-1210 | A | BRK | SS-304-16 | 1.1 | 10.50 | 10 LASER 12/0.25 · 20 DEBURR 0/0.3 · 30 BRAKE 20/0.35 |
+| PNL-5001 | B | PNL | CRS-16 | 3.5 | 10.75 | 10 LASER 12/0.5 · 20 DEBURR 0/0.4 · 40 PEM 10/0.3 · 50 POWDER 0/0.2 · 60 ASSY 5/0.8 |
+| PNL-5010 | A | PNL | AL-5052-12 | 2.2 | 15.50 | 10 LASER 12/0.45 · 20 DEBURR 0/0.4 · 40 PEM 10/0.3 · 60 ASSY 5/0.8 |
+| PNL-5100 | D | PNL | CRS-14 | 5.8 | 20.25 | 10 LASER 15/0.7 · 20 DEBURR 0/0.5 · 30 BRAKE 25/0.9 · 40 PEM 10/0.4 · 50 POWDER 0/0.25 · 60 ASSY 5/1.0 |
+| PNL-5200 | A | PNL | SS-304-16 | 4.0 | 21.75 | 10 LASER 15/0.6 · 20 DEBURR 0/0.6 · 40 PEM 10/0.3 · 60 ASSY 5/1.0 |
+
+Each part/rev has one or more **NC programs** for the laser (e.g. `BRK1042C_14GA.nc`) and a **brake program number** (e.g. `P1042`). See §4.3 for why this matters.
+
+Revisions change over time: at least two parts should have a revision bump mid-backfill (e.g. `BRK-1042` C → D on day 50) so old and new revisions coexist in open jobs.
+
+M1 ships the 12-part starter set above with no revision changes. Expanding to ~20 parts and the mid-window revision bumps are scheduled with M3, when the laser's `ProgramName` join needs old and new revisions in flight at the same time.
+
+---
+
+## 3. Ground truth simulation (`sim/`)
+
+Discrete-event simulation using **SimPy**, driven by a seeded RNG.
+
+### 3.1 Entities
+
+- **Sales orders / lines** → released as **jobs** (`J` + 6 digits, e.g. `J104221`), one job per line.
+- **Job operations** follow the part routing. Each operation queues at its work center.
+- **Machines** have a state machine: `IDLE`, `SETUP`, `RUNNING`, `DOWN`, `PLANNED_STOP` (breaks, shift change, no shift).
+- **Operators** (~14 named fictional employees, split across shifts) are assigned to work centers; some float between the two brakes.
+- **Parts produced**: every cycle produces a piece that is good or scrap, with a true cause.
+- **Material consumption**: which lot fed which job, how many lb.
+
+### 3.2 Truth downtime reasons
+
+`JAM`, `TOOLING`, `MATERIAL_WAIT`, `MAINTENANCE`, `QUALITY_HOLD`, `NO_OPERATOR`, `PROGRAM_ERROR`, `MICROSTOP` (< 2 min).
+
+### 3.3 Truth scrap causes
+
+`SETUP_SCRAP`, `NOZZLE_WEAR`, `BAD_MATERIAL_FLATNESS`, `OVEN_UNDERCURE`, `OPERATOR_ERROR`, `RANDOM` (baseline ~1%).
+
+### 3.4 Powder coat line behavior
+
+PC-LINE is a continuous conveyor. Parts are hung on racks/hooks; the line moves at a set speed (ft/min) through four oven zones. Parts from multiple jobs can share the line at the same time. The line knows **hooks and temperatures, not parts or jobs**. Undercure defects are *not visible* at POWDER; they are found at ASSY inspection 1–2 days later.
+
+### 3.5 Hidden scenarios
+
+Each scenario is configurable in `scenarios.yaml` and can be toggled off. Day numbers are relative to the start of the simulation window. **Scenarios are built in the milestone that needs them** (see §10): M1 builds the scenario framework plus `pb02_second_shift_setups` only.
+
+| ID | Story | Mechanism |
+| --- | --- | --- |
+| `pb02_second_shift_setups` | The slow second shift | PB-02 setups on 2nd shift take `2.8×` standard for the whole window. ERP costs at standard, so affected jobs look profitable. |
+| `laser_nozzle_degradation` | Degrading nozzle | Starting day 41, LSR-01 scrap (`NOZZLE_WEAR`) ramps from 1% to 9% over 10 days until a `MAINTENANCE` event resets it. |
+| `oven_zone3_drift` | Oven runs cool | Days 58–61, PC-LINE zone 3 runs ~25 °F below its 400 °F setpoint. 15–30% of parts coated in that window fail at ASSY inspection 1–2 days later as `OVEN_UNDERCURE`. |
+| `bad_material_lot` | Bad steel | One CRS-14 lot received on day 70 has flatness problems: ~12% `BAD_MATERIAL_FLATNESS` scrap at LASER and BRAKE for every job that consumes it (~8 jobs). |
+
+### 3.6 Answer key output
+
+Written as Parquet to `out/truth/` (never mounted into pipeline containers, never uploaded to the raw data bucket):
+
+- `truth_jobs`, `truth_operations`
+- `truth_machine_states` (interval table: machine, state, reason, start, end)
+- `truth_cycles` (one row per piece: machine, job, op, timestamp, good/scrap, cause)
+- `truth_scrap`
+- `truth_material_consumption` (lot → job, lb)
+- `truth_labor` (operator intervals by job/op)
+- `truth_costs` (true cost per job using actual times × rates)
+
+All truth timestamps are UTC.
+
+---
+
+## 4. Interfaces
+
+Simulation writes to **backing stores** (SQLite for ERP and MES, files for nightly drops, a message log for machines). Interface services read from those stores. This makes backfill and live mode share the same interface code.
+
+### 4.1 ERP (`interfaces/erp-api/`) — REST
+
+Modeled on OData-style mid-market ERP APIs.
+
+**Auth:** `POST /erp/api/v2/auth/token` with client ID/secret → bearer token, TTL 3600 s (configurable).
+
+**Base:** `/erp/api/v2/`
+
+**Entities:** `WorkCenters` (labor and burden rates per work center, §2.4), `Customers`, `Parts`, `PartRevisions`, `SalesOrders`, `SalesOrderLines`, `Jobs`, `JobOperations`, `JobMaterials`, `LaborDetails`, `MaterialLots`, `JobCosts`
+
+**Query:** `$filter` (support `LastModified gt <datetime>` and simple `eq`), `$top` (max 500), `$skip`, `$orderby`.
+
+**Response shape:**
+```json
+{
+  "value": [ { "Company": "CRE", "JobNum": "J104221", "PartNum": "BRK-1042", "RevisionNum": "C", "ProdQty": "250.00000000", "JobReleased": true, "LastModified": "2026-10-02T15:04:11Z" } ],
+  "@odata.nextLink": "/erp/api/v2/Jobs?$skip=500&$top=500"
+}
+```
+
+**Behavior (the business reality):**
+- Costing is **standard**: `JobCosts` exposes `StdLaborCost`, `StdBurdenCost`, `StdMaterialCost`, and `ActLaborCost`, `ActBurdenCost`, `ActMaterialCost`. Actual labor comes from MES labor rolled up nightly, **rounded to 0.1 hr**, posted the **next day**. **Burden is applied at standard hours**, so extra machine time is invisible in ERP.
+- Before labor posts, a supervisor works the daily **labor exception report**: a scan that runs past the end of its shift was left open, so its hours are cut back to the shift end. This is the plant's manual workaround for forgotten scan-offs. It stops 16-hour runs from posting, but still over-charges the job for the rest of that shift. The raw 06:00 close stays in the MES files for the data platform to fix better.
+- `CompletedQty` on jobs is posted only at job completion (from the final operation), not as parts are made.
+- `ProdQty` on a job is the released quantity: the order line's `OrderQty` plus the planner's 5% scrap allowance. Standard cost and material issue are for `ProdQty`; the invoice is for `OrderQty`, or `CompletedQty` if the job came up short.
+- Material cost uses standard cost per lb, not actual lot cost.
+
+**Messes (see §5 for knobs):**
+- Numeric fields returned as strings with 8 decimals.
+- `LaborDetails` (a "legacy" endpoint) returns dates as `/Date(1759420800000)/` instead of ISO 8601.
+- `@odata.nextLink` drift: if records change mid-read, paging can skip or repeat rows.
+- Token expires mid-extraction; `401` must be handled.
+- Throttling: `429` with `Retry-After`; occasional random `500`.
+- `LastModified` is **not** updated when `JobOperations` quantities change or when labor posts.
+- Soft deletes (`Deleted: true`) on sales order lines; hard-deleted records simply disappear.
+- Job splits: a released job may be split into `J104221` and `J104221-1` with quantities rebalanced.
+
+### 4.2 MES (`interfaces/mes-api/` and `interfaces/mes-sftp/`)
+
+#### REST (current state)
+
+**Auth:** header `X-Api-Key`.
+
+- `GET /mes/v1/workcenters` — list
+- `GET /mes/v1/workcenters/{id}/status` — current job, operator, state
+- `GET /mes/v1/jobs/{job_num}/events?since=<local datetime>` — scan events
+
+Field names are `snake_case`. Timestamps are **local time with no offset**: `"2026-10-06 14:31:07"`. No paging; responses are capped at 1,000 events with `"truncated": true`.
+
+#### Nightly files (SFTP)
+
+Written around 02:15 local time to `/outbound/`:
+
+`labor_YYYYMMDD.csv`
+```
+record_id,record_type,employee_id,employee_name,job_num,op_seq,work_center,scan_on,scan_off,qty_good,qty_scrap,notes
+```
+
+`downtime_YYYYMMDD.csv`
+```
+record_id,record_type,work_center,machine_id,start_time,end_time,reason_text,entered_by
+```
+
+`quality_YYYYMMDD.csv`
+```
+record_id,record_type,job_num,op_seq,inspect_time,inspector,qty_inspected,qty_rejected,defect_text,disposition
+```
+
+**Human behavior (from truth):**
+- Operators scan on/off jobs. MES labor does **not** distinguish setup from run.
+- One scan per operator per job operation per shift: on at first touch, off when the operation completes or the shift ends. Operators stay scanned on through breaks and meals, so scanned hours run ~12% above worked hours.
+- ~3% of scans are never closed; a supervisor closes them at 06:00 the next working morning, creating 10–16 hour "runs" from 2nd shift (up to a day from 1st shift, and ~60–72 hours over a weekend). Piece counts on those scans are still right (they came off the job traveler); only the time is wrong.
+- Scrap is entered as a lump count at scan-off.
+- Downtime under ~5 minutes is rarely recorded; microstops never are.
+- `reason_text` is free text generated from truth reasons with realistic variation: `jam`, `JAMMED`, `jam - see Mike`, `waiting on matl`, `no matl`, `tooling`, `die change??`, `maint`, blank.
+- `defect_text` similarly: `paint peeling`, `adhesion`, `bad finish`, `flatness`, `warped`, `bent wrong`.
+
+**File messes:**
+- Windows-1252 encoding, CRLF line endings.
+- Trailing summary row: `TOTAL,,,,...`.
+- Schema drift: starting day 45, `labor_*.csv` gains a `shift_lead` column in the middle, not the end.
+- Corrections: later files contain `record_type=C` rows that replace an earlier `record_id`.
+- Late files: occasionally a file arrives a day late.
+- Duplicates: occasionally a `_v2` copy of a file is also dropped.
+- DST: local timestamps repeat the 01:00–02:00 hour on the fall-back date (2026-11-01 in live mode; configure the backfill window to include a transition when needed).
+
+### 4.3 Machines (`interfaces/machines/`) — MQTT
+
+Local broker: Mosquitto. In AWS: AWS IoT Core.
+
+#### LSR-01 — Sparkplug B (modern)
+
+- Namespace `spBv1.0/Crestline/{NBIRTH|NDEATH|DBIRTH|DDATA|DDEATH}/EDGE-LASER/LSR-01`
+- Protobuf payloads per the Sparkplug B spec, with `seq` and `bdSeq`.
+- Metrics: `State` (int enum), `PartCount` (uint64, monotonic), `SheetCount`, `ProgramName` (string, e.g. `BRK1042C_14GA.nc`), `AlarmCode`, `AlarmText`, `CutTime_s`.
+- Report by exception, plus a heartbeat every 60 s.
+- **ProgramName is the practical join key** from machine data to part/rev, and from there to candidate jobs.
+
+#### PB-01 — flat JSON via GW01 (mid-age)
+
+- Topic `crestline/p10/gw01/pb01/data`
+- Published on change, max 1/s:
+```json
+{ "ts": "2026-10-06T20:31:07.412Z", "N7:12": 2, "CYC_CNT_2": 184233, "B3:0/4": false, "PRG": 1042 }
+```
+- `N7:12` is state (0 idle, 1 setup, 2 run, 3 fault). `B3:0/4` is the guard door. `PRG` is a numeric program ID.
+- `N7:12` reports the mode the operator left the machine in, not whether it is producing: waiting on material, on hold, or between jobs it still reads 2 with no strokes. Jams and program errors read 3, tooling changes 1, and it is switched to 0 for maintenance and at the end of the day. The guard door is open during setup, jams, tooling changes, and maintenance, and interlocked closed while running.
+- `ts` is the **device clock**, which drifts.
+- Program IDs map to parts only via `reference/brake_program_map.csv`, a "maintained by hand" spreadsheet export with a few missing and outdated rows.
+
+#### PB-02 and PEM-01 — polled counters via GW02 (legacy)
+
+- Topic `crestline/p10/gw02/{pb02|pem01}/cnt`
+- Every 30 s:
+```json
+{ "dev": "PB02", "cnt": 65012, "gw_ts": "2026-10-06T20:31:00Z" }
+```
+- 16-bit counter: rolls over at 65,535. Resets to 0 on power cycle (random, and often at 1st-shift start).
+- No state, no program, no device timestamp. Gateway timestamps only.
+- GW02 has **no store-and-forward**: data during outages is lost.
+
+#### PC-LINE — process stream via GW03
+
+- Topic `crestline/p10/gw03/pcline/process`
+- Every 5 s:
+```json
+{ "t": 1759782667412, "z1": 398.2, "z2": 401.7, "z3": 399.1, "z4": 395.8, "spd": 12.0, "hook_cnt": 88213 }
+```
+- Temperatures in °F, speed in ft/min. No parts, no jobs.
+
+#### Machine messes
+- Per-device clock drift (seconds to minutes, slowly wandering).
+- Duplicate messages (~0.5%).
+- Network outages; GW01 and EDGE-LASER buffer and **replay out of order** on reconnect; GW02 loses data.
+- Occasional malformed JSON from GW01.
+
+---
+
+## 5. Mess configuration (`mess.yaml`)
+
+```yaml
+seed: 42
+mess_level: 2          # 0 = clean, 1 = mild, 2 = realistic, 3 = hostile; per-key values override
+
+erp:
+  token_ttl_seconds: 3600
+  throttle_rps: 5
+  random_500_rate: 0.005
+  nextlink_drift: true
+  lastmodified_skips: [JobOperations.qty, LaborDetails.post]
+  legacy_date_format_entities: [LaborDetails]
+  numbers_as_strings: true
+  soft_delete_rate: 0.01
+  job_split_rate: 0.02
+  labor_post_delay_hours: 24
+  labor_rounding_hours: 0.1
+
+mes:
+  local_timestamps_no_offset: true
+  forgot_scan_off_rate: 0.03
+  min_recorded_downtime_minutes: 5
+  free_text_noise: high
+  files:
+    encoding: cp1252
+    trailer_row: true
+    schema_drift_day: 45
+    correction_rate: 0.02
+    late_file_rate: 0.03
+    duplicate_file_rate: 0.02
+
+machines:
+  duplicate_rate: 0.005
+  outages_per_week: 2
+  outage_minutes: [2, 45]
+  clock_drift_seconds:
+    LSR-01: 5
+    PB-01: 140
+    GW02: 20
+  malformed_json_rate: 0.001
+  counter_rollover_bits: 16
+  counter_reset_on_power_cycle: true
+```
+
+Every mess must be individually testable and individually disable-able.
+
+`mess.yaml` grows with the messes: it lists only messes that are built, and unknown keys are rejected. M1 has `mes.forgot_scan_off_rate`, `erp.labor_rounding_hours`, `erp.labor_post_delay_hours`, and `machines.counter_rollover_bits`. The top-level `seed` and `mess_level` presets arrive in M2; until then the seed comes from `--seed`.
+
+---
+
+## 6. Run modes
+
+### Backfill
+```
+crestline sim backfill --days 90 --end 2026-10-01 --seed 42 --out ./out
+```
+Produces:
+- `out/truth/*.parquet` — answer key
+- `out/erp/erp.db` — SQLite store served by the ERP API
+- `out/mes/mes.db` + `out/mes/outbound/*.csv` — MES store and nightly files
+- `out/erp/export/*.jsonl` — ERP tables exported as API-shaped records (a one-time bulk historical extract)
+- `out/machines/*.jsonl` — raw machine payloads as they would have been published (Sparkplug as base64 protobuf), with publish time and topic
+
+The backfill is the extract as of **06:00 local on `--end`** (exclusive: `--days 90 --end 2026-10-01` simulates Jul 3–Sep 30). By then the last day's MES nightly file (02:15) has landed, but that day's labor has not posted to ERP.
+
+With `--upload`, the backfill pushes all non-truth outputs to the raw bucket created by `FoundationStack` (bucket name read from the stack's outputs), using the raw layout in §9. Uploads are idempotent: re-running overwrites the same keys. `out/truth/` is never uploaded.
+
+As built (`src/crestline/upload.py`): the ERP JSONL export, the MES labor files, and the machine JSONL go up byte for byte; `erp.db` stays local (Athena can't read SQLite; the export has the same rows). The entity is the file's own name without its date (`Jobs`, `labor`, `pb02`), and `ingest_date` is the extract date, `--end`. A re-run makes that date's folders match the local output exactly: identical files are skipped (MD5 against the object's ETag, so no new versions), changed files replaced, and files the backfill no longer writes deleted, the same rule the backfill applies to its own output folder. Other dates are never touched; versioning keeps anything replaced or deleted for 30 days. Account and region come from `AWS_PROFILE` / `AWS_REGION`.
+
+### Live
+```
+crestline sim live --speed 1.0 --seed 42
+```
+Advances the simulation clock in real time (or accelerated with `--speed`), writes to the stores incrementally, drops nightly files on schedule, and publishes MQTT messages live.
+
+---
+
+## 7. Repo layout
+
+```
+crestline-supply/
+  README.md
+  LICENSE
+  docs/SPEC.md             this file
+  pyproject.toml           uv-managed; installs the `crestline` package and its CLI
+  mess.yaml
+  scenarios.yaml
+  reference/               parts, routings, customers, rates, brake_program_map.csv
+  src/crestline/           the installed package: the simulator plus the small shared library
+    sim/                   SimPy plant model, scenarios, truth writer, backfill, and the systems it feeds (ERP, MES, machines)
+    reference/             pydantic models and loaders for reference/
+    mess.py, rng.py        mess config and the seeded RNG (shared with the interfaces; neither imports sim)
+    query.py, cli.py       local DuckDB query runner and the `crestline` command
+  interfaces/              one service per folder, each packaged on its own; may import crestline.mess, never crestline.sim
+    erp-api/               FastAPI
+    mes-api/               FastAPI
+    mes-sftp/              nightly file writer (+ local SFTP container)
+    machines/              MQTT publishers per generation
+  pipelines/               ingestion, cleaning, conforming; packaged on its own, never imports crestline.sim
+  queries/                 SQL used in posts: sources.sql plus one file per question; DuckDB locally, Athena in AWS
+    athena/                tables.sql (raw external tables) and sources.sql (the same source names as DuckDB's), so every question file runs unchanged on both engines
+  eval/                    reconciliation scoring vs. truth: the only code outside sim/ and tests/ that reads out/truth/
+  infra/                   AWS CDK (Python): one app, one stack per layer — FoundationStack in M1, ingestion and agent stacks added per milestone
+  docker-compose.yml       broker, SFTP, APIs, sim
+  tests/                   mirrors src/crestline/, plus the truth-isolation check
+  out/                     gitignored
+```
+
+The simulator lives inside the installed package because the CLI and the tests import it. Everything that ships to AWS or runs as a service lives at the top level in its own folder, so it can be packaged without the simulator and cannot import it by accident. `tests/test_isolation.py` checks the rule mechanically.
+
+---
+
+## 8. Tech stack
+
+- Python 3.12, `uv`, `ruff`, `pytest`
+- `simpy`, `pydantic`, `polars` / `pyarrow`, `pyyaml`
+- `fastapi`, `uvicorn`
+- `paho-mqtt`; Sparkplug B protobuf generated from the official `.proto`
+- Docker Compose: Mosquitto, an SFTP container, the APIs, the simulator
+- AWS CDK in Python
+
+---
+
+## 9. AWS target architecture (later milestones)
+
+- **Foundation (M1):** raw data bucket, Athena results bucket, Glue database, Athena workgroup with a scan limit, cost allocation tags from day one. As built (`infra/stacks/foundation.py`, stack `CrestlineFoundation`): both buckets S3-managed encryption, public access blocked, HTTPS only; the raw bucket is versioned and replaced versions expire after 30 days; query results expire after 7 days; Glue database `crestline_raw`; workgroup `crestline` (engine v3) with a 1 GB per-query scan limit and enforced settings. Stack outputs name the buckets, database, and workgroup. The stack is environment-agnostic (account and region come from the AWS profile) and `cdk destroy` empties and deletes both buckets. A Glue database can't carry tags in CloudFormation; the Data Catalog is free at this size, so the cost report misses nothing.
+- **Machines:** MQTT → AWS IoT Core → IoT rules → Amazon Data Firehose → S3 raw
+- **ERP:** EventBridge Scheduler → Step Functions → Lambda poller (tokens, paging, throttling, retries, watermarks) → S3 raw
+- **MES files:** AWS Transfer Family (SFTP) → S3 raw; MES REST polled like ERP
+- **Raw layer:** immutable, partitioned `s3://<raw-bucket>/source=<erp|mes|machines>/entity=<name>/ingest_date=YYYY-MM-DD/`
+- **Curated layer:** Iceberg tables in S3 Tables, built with Athena/Glue; handles corrections, dedupe, time normalization to UTC, counter rollover, and joins
+- **Query:** Amazon Athena
+- **BI:** Amazon Quick (later)
+- **Agent (M4, M5):** Bedrock AgentCore with read-only MCP servers over curated data; Cedar policies; no network path to OT
+
+---
+
+## 10. Milestones
+
+| # | Scope | Done when |
+| --- | --- | --- |
+| M1 | Sim core, reference data, scenario framework + `pb02_second_shift_setups` only, truth writer, backfill mode writing ERP (SQLite + JSONL export), MES labor CSV, and PB-01/PB-02 counter JSONL; local queries with DuckDB; CDK `FoundationStack`; automatic upload to S3 raw; the same margin query in Athena. | A query over ERP + MES + machine data (not truth) shows PB-02 2nd-shift jobs with ERP margin materially higher than reconstructed actual margin; Athena results match local results; the eval confirms it against truth |
+| M2 | Full ERP API with all messes; ERP poller; raw → Iceberg | Poller extracts a complete, deduplicated, correct job/cost history under `mess_level: 2`, verified against truth |
+| M3 | Add `laser_nozzle_degradation` and `oven_zone3_drift` scenarios; MQTT publishers for all machine generations; local and IoT Core ingestion; rollover/drift/replay handling | Reconstructed cycle counts per machine per day within 2% of truth; downtime recall reported |
+| M4 | Read-only MCP server over curated data; Cedar policies; prompt-injection test via MES notes | Injection attempts fail at the policy layer, demonstrated in a test |
+| M5 | One-command CDK deploy; morning brief batch path; eval set of ~20 plant-manager questions | Deploys cleanly in a fresh account; eval results published |
+| M6 | Add `bad_material_lot` scenario; lot genealogy (lot → job → parts, both directions) | Bad lot's affected jobs identified with no false negatives |
+| M7 | Cost allocation tags, cost report, simple calculator | Quarter's actual AWS costs broken down by layer |
+
+### Reconciliation metrics (`eval/`)
+- Downtime recall and precision by reason category
+- Cycle-to-job attribution accuracy
+- Scrap attribution accuracy (by job and by cause)
+- Job actual cost error vs. `truth_costs`
+
+M1 builds the last of these: `eval/margin_gap.py` scores the margin query's rebuilt cost per finished job against `truth_costs` (share within 1% and 5%, with the ERP's own actual cost alongside), names the reason for every miss of 1% or more, checks brake and setup-shift attribution against `truth_operations`, and puts true margin next to ERP and rebuilt margin by brake and setup shift.
+
+---
+
+## 11. Non-goals
+
+- Not a general-purpose manufacturing simulator.
+- Not a faithful replica of any vendor product.
+- No UI in the simulator beyond logs and CLI output.
+- No write paths from the agent to any machine or system of record, ever.
+
+## 12. Open decisions
+
+- Accelerated time factor for live mode in AWS (real time vs. 10×) given the cost.
+- Whether to publish the answer key in the public repo or generate it only locally.
+- Whether to add a second plant for the capstone.
+- Whether one machine layer gets a real Ignition trial instance for credibility.

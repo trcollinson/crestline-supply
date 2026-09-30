@@ -5,6 +5,7 @@ description = "Crestline Supply plant simulator and data platform"
 authors = [
     { name = "Tim Collinson", email = "trcollinson@gmail.com" }
 ]
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "boto3>=1.43.105",
