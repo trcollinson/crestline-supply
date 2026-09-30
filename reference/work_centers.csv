@@ -1,0 +1,8 @@
+work_center,machine_id,description,type,interface_generation
+LASER,LSR-01,fiber laser,discrete_automated,sparkplug_b_mqtt
+DEBURR,DB-01,manual station,manual,none
+BRAKE,PB-01,press brake,discrete,flat_json_gw01
+BRAKE,PB-02,press brake,discrete,polled_counter_gw02
+PEM,PEM-01,hardware insertion press,discrete,polled_counter_gw02
+POWDER,PC-LINE,powder coat line,continuous_process,process_stream_gw03
+ASSY,AS-01,"assembly, pack, final inspection",manual,none

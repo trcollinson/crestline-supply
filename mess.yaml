@@ -1,0 +1,16 @@
+# Interface imperfections (spec §5): how imperfectly each system records what
+# really happened in the plant. Every mess can be switched off on its own.
+#
+# Only the messes built so far are listed; adding a key that isn't built yet
+# is an error. Spec §5's top-level `seed` and `mess_level` (0 clean ...
+# 3 hostile) arrive in M2; until then the seed comes from the CLI (--seed).
+
+mes:
+  forgot_scan_off_rate: 0.03    # a supervisor closes these at 06:00 next working morning; 0 = never forgotten
+
+erp:
+  labor_rounding_hours: 0.1     # MES labor rounds to 0.1 hr when it posts; 0 = exact
+  labor_post_delay_hours: 24    # labor posts the next day; 0 = the moment the scan closes
+
+machines:
+  counter_rollover_bits: 16     # PB-02's polled counter wraps at 65,535; null = never wraps

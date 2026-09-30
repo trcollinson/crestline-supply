@@ -1,0 +1,10 @@
+# Hidden scenarios (spec §3.5): the stories the data platform is supposed to
+# find without looking at the answer key. Each one can be toggled off.
+#
+# Only the M1 scenario exists so far. The others (laser_nozzle_degradation,
+# oven_zone3_drift, bad_material_lot) are added in the milestone that needs
+# them; listing one here before it is built is an error.
+
+pb02_second_shift_setups:
+  enabled: true
+  setup_multiplier: 2.8   # PB-02 setups on 2nd shift take this × standard

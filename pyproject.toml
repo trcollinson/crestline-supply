@@ -1,0 +1,48 @@
+[project]
+name = "crestline"
+version = "0.1.0"
+description = "Crestline Supply plant simulator and data platform"
+authors = [
+    { name = "Tim Collinson", email = "trcollinson@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.43.105",
+    "duckdb>=1.5.6",
+    "polars>=1.44.2",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
+    "simpy>=4.1.2",
+]
+
+[project.scripts]
+crestline = "crestline.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "moto[s3]>=5.2.3",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+infra = [
+    "aws-cdk-lib>=2.272.0",
+    "constructs>=10.8.1",
+]
+
+[tool.uv]
+# The CDK app in infra/ is part of the project, so its tests run with the rest.
+default-groups = ["dev", "infra"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["infra", "eval"]
+
+[tool.ruff]
+target-version = "py312"
+# First-party code: the package, the CDK app (`app`, `stacks`), and the eval.
+src = [".", "src", "infra", "eval"]

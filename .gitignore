@@ -1,0 +1,15 @@
+# Simulator output (includes the answer key)
+out/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# CDK
+infra/cdk.out/
+
+# Local secrets
+.env

@@ -1,0 +1,15 @@
+employee_id,name,shift,work_center
+EMP-001,Marcus Webb,1st,LASER
+EMP-002,Dana Fitch,1st,DEBURR
+EMP-003,Ray Ostrander,1st,BRAKE
+EMP-004,Lila Sconce,1st,BRAKE
+EMP-005,Ken Alvarado,1st,PEM
+EMP-006,Priya Nandan,1st,POWDER
+EMP-007,Walt Girardi,1st,ASSY
+EMP-008,Sam Kowalczyk,2nd,LASER
+EMP-009,Renee Tolliver,2nd,DEBURR
+EMP-010,Miguel Vasquez,2nd,BRAKE
+EMP-011,Tasha Bloom,2nd,BRAKE
+EMP-012,Andre Pruitt,2nd,PEM
+EMP-013,Colleen Marsh,2nd,POWDER
+EMP-014,Jamal Ortiz,2nd,ASSY

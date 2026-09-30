@@ -1,0 +1,5 @@
+material_id,description,cost_per_lb
+CRS-14,"Cold-rolled steel, 14 ga",0.62
+CRS-16,"Cold-rolled steel, 16 ga",0.64
+AL-5052-12,"Aluminum 5052, 12 ga",2.85
+SS-304-16,"Stainless 304, 16 ga",2.40
