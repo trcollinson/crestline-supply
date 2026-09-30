@@ -52,19 +52,29 @@ uv run python eval/margin_gap.py
 
 The backfill takes a few seconds and writes everything to `out/`: the answer key in `out/truth/`, and the ERP export, MES files, and brake messages beside it. Same seed, same bytes, every time.
 
+To watch the story switch off, set `enabled: false` under `pb02_second_shift_setups` in `scenarios.yaml` and run the backfill and the query again. PB-02 second shift falls in line with the other groups.
+
 ## Run it on AWS
 
-The same query runs in Athena over the same files in S3. You need an AWS profile, Node.js, and the CDK CLI (2.1143 or later). If the account isn't bootstrapped for CDK yet, run `uv run cdk bootstrap` in `infra/` once.
+The same query runs in Athena over the same files in S3. You need Node.js with the CDK CLI (`npm install -g aws-cdk`, 2.1143 or later) and an AWS profile with a region configured. Run from the repo root.
 
 ```sh
-export AWS_PROFILE=<profile> AWS_REGION=<region>
-(cd infra && uv run cdk deploy)
+export AWS_PROFILE=<profile>
+uv sync
+(cd infra && cdk bootstrap && cdk deploy)
 uv run crestline sim backfill --days 90 --end 2026-10-01 --seed 42 --upload
 uv run crestline athena setup
 uv run crestline query margin-gap --engine athena
 ```
 
-The stack is two S3 buckets, a Glue database, and an Athena workgroup capped at 1 GB per query. Idle, it costs next to nothing; the margin query scans about 100 MB, a twentieth of a cent. `cdk destroy` in `infra/` removes everything except the log group of the Lambda that empties the buckets.
+`cdk bootstrap` is needed once per account and region. `cdk deploy` asks once to approve the IAM role it creates. The stack is two S3 buckets, a Glue database, and an Athena workgroup capped at 1 GB per query. Idle, it costs next to nothing; the margin query scans about 100 MB, a twentieth of a cent.
+
+To take it down, `cdk destroy` in `infra/` empties the buckets and deletes the stack. It leaves one thing behind, the log group of the Lambda that emptied the buckets:
+
+```sh
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/CrestlineFoundation --query 'logGroups[].logGroupName'
+aws logs delete-log-group --log-group-name <name from above>
+```
 
 ## Layout
 
