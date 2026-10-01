@@ -61,10 +61,7 @@ def test_pb02_second_shift_stands_out(con):
     assert {("PB-01", "1st"), ("PB-01", "2nd"), ("PB-02", "1st")} <= set(groups)
     others = [g for key, g in groups.items() if key[0] not in UNGROUPED]
     # The ERP flatters PB-02's 2nd shift, and only PB-02's 2nd shift...
-    assert (
-        pb02_2nd["erp_overstates_pts"]
-        >= max(g["erp_overstates_pts"] for g in others) + 3
-    )
+    assert pb02_2nd["gap_pts"] >= max(g["gap_pts"] for g in others) + 3
     # ...because its setups run long.
     assert pb02_2nd["setup_vs_standard"] > 2
     assert all(g["setup_vs_standard"] < 1.5 for g in others)
@@ -156,7 +153,7 @@ def test_cli_prints_the_margin_gap(out, capsys):
 
     printed = capsys.readouterr().out
     assert "PB-02" in printed
-    assert "erp_overstates_pts" in printed
+    assert "gap_pts" in printed
 
 
 def test_revenue_is_the_order_not_the_overs(con):

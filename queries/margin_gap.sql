@@ -265,6 +265,8 @@ where j.JobComplete;
 
 
 -- 5. The answer: ERP margin against rebuilt margin, by brake and shift.
+--    gap_pts is how far the ERP margin sits above the rebuilt one: positive
+--    means the ERP makes those jobs look better than they were.
 select
     brake,
     coalesce(setup_shift, '')                                        as shift,
@@ -273,7 +275,7 @@ select
     round(100 * (1 - sum(standard_cost) / sum(revenue)), 1)          as standard_margin_pct,
     round(100 * (1 - sum(erp_cost)      / sum(revenue)), 1)          as erp_margin_pct,
     round(100 * (1 - sum(rebuilt_cost)  / sum(revenue)), 1)          as rebuilt_margin_pct,
-    round(100 * (sum(rebuilt_cost) - sum(erp_cost)) / sum(revenue), 1) as erp_overstates_pts,
+    round(100 * (sum(rebuilt_cost) - sum(erp_cost)) / sum(revenue), 1) as gap_pts,
     round(sum(setup_hours) / sum(std_setup_hours), 2)                as setup_vs_standard
 from job_margins
 group by 1, 2
