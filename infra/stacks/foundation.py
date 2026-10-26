@@ -49,7 +49,7 @@ class FoundationStack(cdk.Stack):
             **kwargs,
         )
 
-        raw_bucket = s3.Bucket(
+        self.raw_bucket = raw_bucket = s3.Bucket(
             self,
             "RawBucket",
             encryption=s3.BucketEncryption.S3_MANAGED,
@@ -70,7 +70,7 @@ class FoundationStack(cdk.Stack):
             auto_delete_objects=True,
         )
 
-        results_bucket = s3.Bucket(
+        self.results_bucket = results_bucket = s3.Bucket(
             self,
             "AthenaResultsBucket",
             encryption=s3.BucketEncryption.S3_MANAGED,

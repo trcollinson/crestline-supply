@@ -1,0 +1,16 @@
+[project]
+name = "crestline-pipelines"
+version = "0.1.0"
+description = "Crestline's data platform pipelines: getting data out of the ERP"
+requires-python = ">=3.12"
+# The standard library is all they need, so they can run in a Lambda as they are.
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The package sits directly in this folder (pipelines/erp_extract/).
+module-name = "erp_extract"
+module-root = ""

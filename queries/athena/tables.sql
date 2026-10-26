@@ -13,8 +13,11 @@
 -- queries use.
 
 
--- ERP: the JSONL export. The JSON reader matches keys to columns without
--- regard to case (Athena lowercases column names).
+-- ERP: the backfill's one-time JSONL export. The queries read the ERP from
+-- the curated tables now (sources.sql); these stay for comparing the two.
+-- The poller's raw pages (source=erp-api/) are read through raw_erp_api,
+-- which ErpIngestStack defines. The JSON reader matches keys to columns
+-- without regard to case (Athena lowercases column names).
 
 drop table if exists raw_erp_work_centers;
 create external table raw_erp_work_centers (
@@ -26,6 +29,44 @@ create external table raw_erp_work_centers (
 partitioned by (ingest_date string)
 row format serde 'org.openx.data.jsonserde.JsonSerDe'
 location 's3://${raw_bucket}/source=erp/entity=WorkCenters/';
+
+drop table if exists raw_erp_customers;
+create external table raw_erp_customers (
+    Company       string,
+    CustomerCode  string,
+    Name          string
+)
+partitioned by (ingest_date string)
+row format serde 'org.openx.data.jsonserde.JsonSerDe'
+location 's3://${raw_bucket}/source=erp/entity=Customers/';
+
+drop table if exists raw_erp_parts;
+create external table raw_erp_parts (
+    Company      string,
+    PartNum      string,
+    Description  string,
+    PartType     string,
+    Family       string,
+    UOM          string,
+    UnitPrice    double,
+    UnitCost     double
+)
+partitioned by (ingest_date string)
+row format serde 'org.openx.data.jsonserde.JsonSerDe'
+location 's3://${raw_bucket}/source=erp/entity=Parts/';
+
+drop table if exists raw_erp_part_revisions;
+create external table raw_erp_part_revisions (
+    Company         string,
+    PartNum         string,
+    RevisionNum     string,
+    Approved        boolean,
+    MtlPartNum      string,
+    MtlQtyPerPiece  double
+)
+partitioned by (ingest_date string)
+row format serde 'org.openx.data.jsonserde.JsonSerDe'
+location 's3://${raw_bucket}/source=erp/entity=PartRevisions/';
 
 drop table if exists raw_erp_sales_orders;
 create external table raw_erp_sales_orders (
@@ -48,6 +89,7 @@ create external table raw_erp_sales_order_lines (
     RevisionNum   string,
     OrderQty      bigint,
     UnitPrice     double,
+    Deleted       boolean,
     LastModified  string
 )
 partitioned by (ingest_date string)
@@ -90,6 +132,22 @@ create external table raw_erp_job_operations (
 partitioned by (ingest_date string)
 row format serde 'org.openx.data.jsonserde.JsonSerDe'
 location 's3://${raw_bucket}/source=erp/entity=JobOperations/';
+
+drop table if exists raw_erp_job_materials;
+create external table raw_erp_job_materials (
+    Company         string,
+    JobNum          string,
+    MtlSeq          bigint,
+    MtlPartNum      string,
+    RequiredQty     double,
+    IssuedQty       double,
+    UnitCost        double,
+    IssuedComplete  boolean,
+    LastModified    string
+)
+partitioned by (ingest_date string)
+row format serde 'org.openx.data.jsonserde.JsonSerDe'
+location 's3://${raw_bucket}/source=erp/entity=JobMaterials/';
 
 drop table if exists raw_erp_job_costs;
 create external table raw_erp_job_costs (
@@ -180,10 +238,14 @@ location 's3://${raw_bucket}/source=machines/entity=pb02/';
 
 -- Register the partitions (extracts) already in the bucket.
 msck repair table raw_erp_work_centers;
+msck repair table raw_erp_customers;
+msck repair table raw_erp_parts;
+msck repair table raw_erp_part_revisions;
 msck repair table raw_erp_sales_orders;
 msck repair table raw_erp_sales_order_lines;
 msck repair table raw_erp_jobs;
 msck repair table raw_erp_job_operations;
+msck repair table raw_erp_job_materials;
 msck repair table raw_erp_job_costs;
 msck repair table raw_erp_labor_details;
 msck repair table raw_mes_labor;

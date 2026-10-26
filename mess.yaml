@@ -1,16 +1,33 @@
 # Interface imperfections (spec §5): how imperfectly each system records what
 # really happened in the plant. Every mess can be switched off on its own.
 #
+# `mess_level` picks a preset for every knob below: 0 clean, 1 mild (half the
+# rates), 2 realistic (the values shown), 3 hostile (double the rates).
+# Anything written under a section overrides the preset, so leave the
+# sections commented out to get the level as is. `seed` is the default random
+# seed; `crestline sim backfill --seed` overrides it.
+#
 # Only the messes built so far are listed; adding a key that isn't built yet
-# is an error. Spec §5's top-level `seed` and `mess_level` (0 clean ...
-# 3 hostile) arrive in M2; until then the seed comes from the CLI (--seed).
+# is an error.
 
-mes:
-  forgot_scan_off_rate: 0.03    # a supervisor closes these at 06:00 next working morning; 0 = never forgotten
+seed: 42
+mess_level: 2
 
-erp:
-  labor_rounding_hours: 0.1     # MES labor rounds to 0.1 hr when it posts; 0 = exact
-  labor_post_delay_hours: 24    # labor posts the next day; 0 = the moment the scan closes
-
-machines:
-  counter_rollover_bits: 16     # PB-02's polled counter wraps at 65,535; null = never wraps
+# mes:
+#   forgot_scan_off_rate: 0.03    # a supervisor closes these at 06:00 next working morning; 0 = never forgotten
+#
+# erp:
+#   labor_rounding_hours: 0.1     # MES labor rounds to 0.1 hr when it posts; 0 = exact
+#   labor_post_time: "22:00"      # nightly batch posts a day's labor the next working night; null = the moment the scan closes
+#   token_ttl_seconds: 3600       # access tokens last this long on the ERP's clock; null = never expire
+#   throttle_rps: 5               # requests per second per API process before a 429 with Retry-After; null = no limit
+#   random_500_rate: 0.005        # share of requests that fail with a bare 500; 0 = never
+#   nextlink_drift: true          # nextLink pages with $skip and can repeat or skip rows; false = a $skiptoken pins the first page's instant
+#   numbers_as_strings: true      # numbers come back as "250.00000000"; false = JSON numbers
+#   legacy_date_format_entities: [LaborDetails]   # their dates come back as /Date(ms)/; [] = ISO 8601
+#   lastmodified_skips: [JobOperations.qty, LaborDetails.post]   # changes that leave LastModified alone; [] = honest stamps
+#   soft_delete_rate: 0.01        # share of orders entered twice and cancelled the next morning; 0 = none
+#   job_split_rate: 0.02          # share of jobs split into J and J-1 after release; 0 = none
+#
+# machines:
+#   counter_rollover_bits: 16     # PB-02's polled counter wraps at 65,535; null = never wraps

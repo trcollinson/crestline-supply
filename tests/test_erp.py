@@ -1,39 +1,22 @@
+"""The ERP's tables at the extract: the costing rules, on the whole log replayed."""
+
 import json
 import sqlite3
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 import polars as pl
 import pytest
 
-from crestline.mess import ErpMess, MesMess
+from crestline.mess import ErpMess
 from crestline.sim.clock import PLANT_TZ
-from crestline.sim.systems import erp, mes
+from crestline.sim.systems import erp
 
 CENT = 0.01
 
 
 @pytest.fixture(scope="module")
-def scans(plant_run, reference_data):
-    return mes.scan_records(plant_run.truth, reference_data, MesMess(), seed=42)
-
-
-def build(plant_run, reference_data, scans, mess: ErpMess | None = None):
-    released_at = dict(
-        plant_run.truth["truth_jobs"].select("job_num", "released_at").iter_rows()
-    )
-    return erp.build_erp(
-        plant_run.jobs,
-        released_at,
-        scans,
-        reference_data,
-        mess or ErpMess(),
-        plant_run.extracted_at,
-    )
-
-
-@pytest.fixture(scope="module")
-def tables(plant_run, reference_data, scans):
-    return build(plant_run, reference_data, scans)
+def tables(erp_changes):
+    return erp_changes.as_of()
 
 
 def by_key(rows, *keys):
@@ -124,12 +107,23 @@ def test_jobs_are_released_over_the_order_to_cover_scrap(tables):
         assert job["PartNum"] == line["PartNum"]
 
 
-def test_labor_rounding_on_and_off(plant_run, reference_data, scans, tables):
+def test_orders_are_entered_before_their_jobs_are_released(plant_run, tables):
+    entered = {o.order_num: o.order_date for o in plant_run.jobs.sales_orders}
+    jobs = by_key(tables["Jobs"], "OrderNum")
+
+    for order in tables["SalesOrders"]:
+        assert order["OrderDate"] == entered[order["OrderNum"]].isoformat()
+        job = jobs[(order["OrderNum"],)]
+        assert order["OrderDate"] < job["ReleaseDate"]
+        assert order["LastModified"] < job["LastModified"]
+
+
+def test_labor_rounding_on_and_off(build_erp_changes, tables):
     rounded = [row["LaborHrs"] for row in tables["LaborDetails"]]
     assert all(round(h * 10, 6) == round(h * 10) for h in rounded)
     assert 0.0 in rounded  # a two-minute scan rounds away to nothing
 
-    exact = build(plant_run, reference_data, scans, ErpMess(labor_rounding_hours=0))
+    exact = build_erp_changes(ErpMess(labor_rounding_hours=0)).as_of()
     exact_hours = [row["LaborHrs"] for row in exact["LaborDetails"]]
     assert len(exact_hours) == len(rounded)
     assert not all(round(h * 10, 6) == round(h * 10) for h in exact_hours)
@@ -137,25 +131,31 @@ def test_labor_rounding_on_and_off(plant_run, reference_data, scans, tables):
         assert abs(h_rounded - h_exact) <= 0.05 + 1e-9
 
 
-def test_labor_posts_the_next_day_on_and_off(plant_run, reference_data, scans, tables):
-    def posted_by_extract(delay_hours: float) -> int:
-        cutoff = plant_run.extracted_at - timedelta(hours=delay_hours)
-        return scans.filter(pl.col("scan_off") <= cutoff).height
+def test_labor_posts_in_the_nightly_batch_on_and_off(
+    plant_run, scans, build_erp_changes, tables
+):
+    batched = tables["LaborDetails"]
+    for row in batched:
+        posted = datetime.fromisoformat(row["LastModified"]).astimezone(PLANT_TZ)
+        payroll = date.fromisoformat(row["PayrollDate"])
+        # 22:00 the next working day; Friday's labor posts Monday night.
+        next_working_day = payroll + timedelta(days=3 if payroll.weekday() == 4 else 1)
+        assert (posted.date(), posted.time()) == (next_working_day, time(22, 0))
+    # The window ends on a Friday, so its labor waits for Monday's batch.
+    assert plant_run.last_day.isoformat() not in {r["PayrollDate"] for r in batched}
 
-    delayed = tables["LaborDetails"]
-    assert len(delayed) == posted_by_extract(24)
-    assert plant_run.last_day.isoformat() not in {r["PayrollDate"] for r in delayed}
-
-    immediate = build(
-        plant_run, reference_data, scans, ErpMess(labor_post_delay_hours=0)
-    )["LaborDetails"]
-    assert len(immediate) == posted_by_extract(0) > len(delayed)
+    immediate = build_erp_changes(ErpMess(labor_post_time=None)).as_of()["LaborDetails"]
+    closed = scans.filter(pl.col("scan_off") <= plant_run.extracted_at)
+    assert len(immediate) == closed.height > len(batched)
+    assert sorted(row["LastModified"] for row in immediate) == sorted(
+        erp._timestamp(scan_off) for scan_off in closed["scan_off"]
+    )
 
 
 def test_the_exception_report_cuts_forgotten_scans_to_the_shift_end(
-    plant_run, reference_data, scans
+    scans, build_erp_changes
 ):
-    exact = build(plant_run, reference_data, scans, ErpMess(labor_rounding_hours=0))
+    exact = build_erp_changes(ErpMess(labor_rounding_hours=0)).as_of()
     hours_by_record = {
         (r["EmployeeNum"], r["JobNum"], r["OprSeq"], r["PayrollDate"]): r["LaborHrs"]
         for r in exact["LaborDetails"]
@@ -195,8 +195,8 @@ def test_the_erp_never_knows_which_machine(reference_data, tables):
         assert not any("Machine" in column for column in columns)
 
 
-def test_export_matches_the_database(tables, tmp_path):
-    written = erp.write_erp(tables, tmp_path)
+def test_export_matches_the_database(erp_changes, tables, tmp_path):
+    written = erp.write_erp(erp_changes, tmp_path)
 
     assert tmp_path / "erp.db" in written
     with sqlite3.connect(tmp_path / "erp.db") as db:
@@ -210,3 +210,53 @@ def test_export_matches_the_database(tables, tmp_path):
             ]
             assert from_db == from_export, entity
             assert len(from_db) == len(tables[entity])
+
+
+def test_job_materials_are_the_standard_material_cost(reference_data, tables):
+    costs = by_key(tables["JobCosts"], "JobNum")
+    revisions = by_key(tables["PartRevisions"], "PartNum", "RevisionNum")
+    materials = by_key(tables["JobMaterials"], "JobNum", "MtlSeq")
+
+    assert len(materials) == len(tables["Jobs"])  # one sheet stock per job
+    for job in tables["Jobs"]:
+        material = materials[(job["JobNum"], 10)]
+        revision = revisions[(job["PartNum"], job["RevisionNum"])]
+        assert material["MtlPartNum"] == revision["MtlPartNum"]
+        assert material["RequiredQty"] == pytest.approx(
+            job["ProdQty"] * revision["MtlQtyPerPiece"]
+        )
+        assert material["IssuedQty"] == material["RequiredQty"]
+        assert material["IssuedComplete"] is True
+        assert material["RequiredQty"] * material["UnitCost"] == pytest.approx(
+            costs[(job["JobNum"],)]["StdMaterialCost"], abs=CENT / 2 + 1e-9
+        )  # the cost is rounded to the cent, and a half cent can go either way
+
+
+def test_master_data_is_the_reference_data(reference_data, tables):
+    parts = by_key(tables["Parts"], "PartNum")
+    made = {p.part_id for p in reference_data.parts}
+    bought = {m.material_id for m in reference_data.materials}
+
+    assert {c["CustomerCode"] for c in tables["Customers"]} == {
+        c.code for c in reference_data.customers
+    }
+    assert set(parts) == {(n,) for n in made | bought}
+    for part in reference_data.parts:
+        row = parts[(part.part_id,)]
+        assert (row["PartType"], row["UOM"], row["UnitPrice"]) == (
+            "M",
+            "EA",
+            part.price,
+        )
+    for material in reference_data.materials:
+        row = parts[(material.material_id,)]
+        assert (row["PartType"], row["UOM"], row["UnitCost"]) == (
+            "P",
+            "LB",
+            material.cost_per_lb,
+        )
+    for revision in tables["PartRevisions"]:
+        assert (revision["MtlPartNum"],) in parts
+    # Master data was set up before the window and has no change stamp.
+    for entity in ("WorkCenters", "Customers", "Parts", "PartRevisions"):
+        assert "LastModified" not in erp.ENTITIES[entity]

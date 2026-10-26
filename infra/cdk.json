@@ -90,6 +90,7 @@
     "@aws-cdk/core:validateSnapshotRemovalPolicy": true,
     "@aws-cdk/custom-resources:logApiResponseDataPropertyTrueDefault": false,
     "@aws-cdk/customresources:installLatestAwsSdkDefault": false,
-    "@aws-cdk/s3-notifications:addS3TrustKeyPolicyForSnsSubscriptions": true
+    "@aws-cdk/s3-notifications:addS3TrustKeyPolicyForSnsSubscriptions": true,
+    "erpStore": "../out/erp/erp.db"
   }
 }

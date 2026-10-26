@@ -49,6 +49,7 @@ def extraction_time(end: date) -> datetime:
 class BackfillSummary:
     first_day: date
     last_day: date
+    seed: int
     jobs: int
     jobs_complete: int
     written: dict[Path, int]  # file -> rows
@@ -57,7 +58,7 @@ class BackfillSummary:
 def run_backfill(
     days: int,
     end: date,
-    seed: int,
+    seed: int | None,
     out_dir: Path,
     reference_dir: Path = Path("reference"),
     scenarios_path: Path = Path("scenarios.yaml"),
@@ -66,6 +67,7 @@ def run_backfill(
     reference = load_reference_data(reference_dir)
     scenarios = load_scenarios(scenarios_path)
     mess = load_mess(mess_path)
+    seed = mess.seed if seed is None else seed
     first_day, last_day = backfill_window(days, end)
     extracted_at = extraction_time(end)
 
@@ -83,10 +85,10 @@ def run_backfill(
 
     # The ERP gets its own order book and the MES labor, never the simulation.
     released_at = dict(truth["truth_jobs"].select("job_num", "released_at").iter_rows())
-    erp_tables = erp.build_erp(
-        jobs, released_at, scans, reference, mess.erp, extracted_at
+    erp_changes = erp.build_erp(
+        jobs, released_at, scans, reference, mess.erp, extracted_at, seed=seed
     )
-    written |= erp.write_erp(erp_tables, out_dir / "erp")
+    written |= erp.write_erp(erp_changes, out_dir / "erp")
 
     written |= machines.write_brake_streams(
         truth, reference, mess.machines, seed, out_dir / "machines"
@@ -95,6 +97,7 @@ def run_backfill(
     return BackfillSummary(
         first_day=first_day,
         last_day=last_day,
+        seed=seed,
         jobs=len(result.jobs),
         jobs_complete=sum(j.status == JobStatus.COMPLETE for j in result.jobs),
         written=written,

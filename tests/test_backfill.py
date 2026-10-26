@@ -71,7 +71,7 @@ def test_writes_the_answer_key_and_every_system(out):
     ]
     assert len(list((out / "mes" / "outbound").glob("labor_*.csv"))) == 14
     assert (out / "erp" / "erp.db").exists()
-    assert len(list((out / "erp" / "export").glob("*.jsonl"))) == 7
+    assert len(list((out / "erp" / "export").glob("*.jsonl"))) == 11
     assert sorted(p.name for p in (out / "machines").iterdir()) == [
         "pb01.jsonl",
         "pb02.jsonl",
@@ -89,7 +89,14 @@ def test_system_outputs_hold_nothing_only_the_answer_key_knows(out):
     """M1 step 6's done-when: every fact in these files is one a system could see."""
     erp_db_rows = []
     with sqlite3.connect(out / "erp" / "erp.db") as db:
-        for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+        tables = [
+            name
+            for (name,) in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        ]
+        assert "Jobs_History" in tables  # every superseded version is checked too
+        for table in tables:
             erp_db_rows += [str(row) for row in db.execute(f"SELECT * FROM {table}")]
     system_text = {
         "erp.db": "\n".join(erp_db_rows),
@@ -100,7 +107,7 @@ def test_system_outputs_hold_nothing_only_the_answer_key_knows(out):
             if path.suffix in {".csv", ".jsonl"}
         },
     }
-    assert len(system_text) == 1 + 14 + 7 + 2
+    assert len(system_text) == 1 + 14 + 11 + 2
 
     for name, text in system_text.items():
         assert not TRUTH_ONLY_WORDS.search(text), (name, TRUTH_ONLY_WORDS.search(text))

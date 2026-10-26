@@ -1,35 +1,33 @@
--- Sources for the queries in queries/, in Athena: views over the raw tables
--- (tables.sql) with the same names and columns sources.sql gives DuckDB, so
--- margin_gap.sql runs unchanged on either engine.
+-- Sources for the queries in queries/, in Athena: views with the same names
+-- and columns sources.sql gives DuckDB, so margin_gap.sql runs unchanged on
+-- either engine.
 --
--- Each upload is a full extract under its own ingest_date. The views read
--- only the newest one, so a later upload replaces an earlier one instead of
--- doubling every row.
+-- The ERP comes from the curated tables (crestline_curated): the poller's
+-- raw pages merged into one typed Iceberg table per entity, kept current
+-- after every poll (M2). Everything else comes from the raw tables
+-- (tables.sql), where each upload is a full extract under its own
+-- ingest_date; those views read only the newest one, so a later upload
+-- replaces an earlier one instead of doubling every row.
 --
 -- Only what the plant's systems recorded is here, and no query may read
 -- anything else.
 
 
--- ERP: the JSONL export, one table per entity.
+-- ERP: the curated tables, one row per key, as the ERP holds it now.
 create or replace view erp_work_centers as
-select * from raw_erp_work_centers
-where ingest_date = (select max(ingest_date) from raw_erp_work_centers);
+select * from crestline_curated.erp_work_centers;
 
 create or replace view erp_jobs as
-select * from raw_erp_jobs
-where ingest_date = (select max(ingest_date) from raw_erp_jobs);
+select * from crestline_curated.erp_jobs;
 
 create or replace view erp_sales_order_lines as
-select * from raw_erp_sales_order_lines
-where ingest_date = (select max(ingest_date) from raw_erp_sales_order_lines);
+select * from crestline_curated.erp_sales_order_lines;
 
 create or replace view erp_job_operations as
-select * from raw_erp_job_operations
-where ingest_date = (select max(ingest_date) from raw_erp_job_operations);
+select * from crestline_curated.erp_job_operations;
 
 create or replace view erp_job_costs as
-select * from raw_erp_job_costs
-where ingest_date = (select max(ingest_date) from raw_erp_job_costs);
+select * from crestline_curated.erp_job_costs;
 
 
 -- MES: the nightly labor files. Timestamps are plant local time with no

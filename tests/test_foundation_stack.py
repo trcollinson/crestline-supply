@@ -21,7 +21,8 @@ CRESTLINE_TAGS = {"project": "crestline", "layer": "foundation", "milestone": "M
 @pytest.fixture(scope="module")
 def app():
     context = json.loads((INFRA_DIR / "cdk.json").read_text())["context"]
-    return build_app(context)
+    # Build no assets: the ERP API's package is made at deploy, not in a test.
+    return build_app(context | {"aws:cdk:bundling-stacks": []})
 
 
 @pytest.fixture(scope="module")
@@ -145,12 +146,28 @@ def test_every_tagged_resource_in_the_template_has_all_three_tags(template):
 
 
 def test_outputs_name_the_buckets_database_and_workgroup(template):
-    assert set(template.find_outputs("*")) == {
+    outputs = template.find_outputs("*")
+    named = {
         "RawBucketName",
         "AthenaResultsBucketName",
         "GlueDatabaseName",
         "AthenaWorkGroupName",
     }
+    assert named <= set(outputs)
+    # The rest are the raw bucket's name and ARN and the results bucket's
+    # ARN, published because the ERP poller's stack (CrestlineErpIngest)
+    # writes into the one and runs Athena queries that write into the other.
+    # They are plain outputs, read there with Fn::GetStackOutput (the
+    # project's weak cross-stack references), not exports, so nothing locks
+    # this stack.
+    published = {k: v for k, v in outputs.items() if k not in named}
+    assert len(published) == 3
+    buckets = []
+    for name, output in published.items():
+        assert name.startswith("PublishOutput") and "Export" not in output
+        buckets.append(json.dumps(output["Value"]))
+    assert sum("RawBucket" in b for b in buckets) == 2
+    assert sum("AthenaResultsBucket" in b for b in buckets) == 1
 
 
 def test_template_names_no_account_or_region(template):

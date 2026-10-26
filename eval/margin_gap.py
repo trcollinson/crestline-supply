@@ -44,6 +44,7 @@ TOO_MUCH = {
 }
 TOO_LITTLE = {
     "open_at_extract": "scan still open at the extract, so in no MES file yet",
+    "split_off_material": "material issued to a job split off from this one",
 }
 
 JOBS_SQL = """
@@ -71,6 +72,14 @@ unscanned as (
       )
 ),
 
+-- The planner split the job in the ERP: part of its material went to a
+-- child job (J104221-1), though the floor ran the whole lot under this one.
+split as (
+    select regexp_replace(JobNum, '-1$', '') as job_num
+    from erp_jobs
+    where JobNum like '%-1'
+),
+
 -- The machine sat idle in the middle of one of the job's operations.
 idle as (
     select distinct o.job_num
@@ -92,13 +101,15 @@ select m.job_num,
        coalesce(f.forgotten_scan_off, false)    as forgotten_scan_off,
        a.job_num is not null                    as operator_away,
        i.job_num is not null                    as machine_idle,
-       u.job_num is not null                    as unscanned_operation
+       u.job_num is not null                    as unscanned_operation,
+       sp.job_num is not null                   as split_off
 from job_margins as m
 join truth_costs as t on t.job_num = m.job_num
 left join forgotten as f on f.job_num = m.job_num
 left join away      as a on a.job_num = m.job_num
 left join idle      as i on i.job_num = m.job_num
 left join unscanned as u on u.job_num = m.job_num
+left join split     as sp on sp.job_num = m.job_num
 """
 
 BRAKES_SQL = """
@@ -194,7 +205,7 @@ def report(scores: Scores) -> str:
     lines += ["", f"Its {misses.height} misses of 1% or more:"]
     for heading, reasons in [
         ("charged too much, for scanned-on time nobody worked", TOO_MUCH),
-        ("charged too little, for work the MES hasn't reported yet", TOO_LITTLE),
+        ("charged too little", TOO_LITTLE),
     ]:
         lines.append(f"  {heading}:")
         lines += [f"  {counts.get(r, 0):>5}  {label}" for r, label in reasons.items()]
@@ -232,6 +243,8 @@ def _reason() -> pl.Expr:
         .then(pl.lit("operator_away"))
         .when(too_much & pl.col("machine_idle"))
         .then(pl.lit("machine_idle"))
+        .when(~too_much & pl.col("split_off"))
+        .then(pl.lit("split_off_material"))
         .when(~too_much & pl.col("unscanned_operation"))
         .then(pl.lit("open_at_extract"))
         .otherwise(pl.lit("unexplained"))

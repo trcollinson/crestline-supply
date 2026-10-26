@@ -8,22 +8,35 @@ adds a scrap allowance so that the usual few scrapped pieces still leave
 enough good ones to ship. The order line keeps the ordered quantity, which
 is what gets invoiced; the job carries the released quantity, which is what
 the plant makes and what the ERP costs.
+
+Orders arrive before they are released: sales enters an order, and the
+planner releases its job 1-5 working days later, once it has been checked
+and scheduled. That lead time is drawn from its own random stream, so adding
+it left every job, quantity, and due date exactly where it was. The moment
+of entry, some second of that day's office hours, comes from a stream of its
+own for the same reason.
 """
 
 import math
 import random
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from pydantic import BaseModel
 
 from crestline.reference import ReferenceData
 from crestline.rng import make_rng
 
+from .clock import PLANT_TZ
+
 JOBS_PER_WEEKDAY = (15, 25)
 QTY_RANGE = (10, 500)
 QTY_LOGNORMAL_MEDIAN = 25
 QTY_LOGNORMAL_SIGMA = 0.75
 DUE_LEAD_DAYS_RANGE = (5, 21)
+# Working days from order entry to job release.
+ORDER_LEAD_WORKING_DAYS = (1, 5)
+# When the office enters orders, plant local time.
+OFFICE_HOURS = (time(8, 0), time(17, 0))
 FIRST_JOB_SEQ = 100001
 # The planner's standing rule: release 5% over the order, rounded up. Overs
 # go to stock; shorts are shipped short.
@@ -33,6 +46,8 @@ SCRAP_ALLOWANCE_PCT = 5
 class SalesOrder(BaseModel):
     order_num: str
     customer_code: str
+    order_date: date  # entered by sales, a few working days before release
+    entered_at: datetime  # the moment it was entered, UTC
 
 
 class SalesOrderLine(BaseModel):
@@ -84,6 +99,23 @@ def _draw_quantity(rng: random.Random) -> int:
     return max(QTY_RANGE[0], min(QTY_RANGE[1], qty))
 
 
+def _working_days_before(day: date, working_days: int) -> date:
+    """The weekday `working_days` weekdays before `day`."""
+    while working_days:
+        day -= timedelta(days=1)
+        if day.weekday() < 5:
+            working_days -= 1
+    return day
+
+
+def _office_moment(day: date, rng: random.Random) -> datetime:
+    """A whole second during office hours on `day`, in UTC."""
+    opens = datetime.combine(day, OFFICE_HOURS[0], tzinfo=PLANT_TZ)
+    closes = datetime.combine(day, OFFICE_HOURS[1], tzinfo=PLANT_TZ)
+    seconds = rng.randint(0, int((closes - opens).total_seconds()))
+    return (opens + timedelta(seconds=seconds)).astimezone(UTC)
+
+
 def generate_jobs(
     reference_data: ReferenceData,
     start_date: date,
@@ -99,6 +131,8 @@ def generate_jobs(
         raise ValueError("end_date must not be before start_date")
 
     rng = make_rng(seed)
+    order_entry_rng = make_rng(seed, "order_entry")
+    order_entry_time_rng = make_rng(seed, "order_entry_time")
 
     sales_orders: list[SalesOrder] = []
     sales_order_lines: list[SalesOrderLine] = []
@@ -113,13 +147,22 @@ def generate_jobs(
                 part = rng.choice(reference_data.parts)
                 qty = _draw_quantity(rng)
                 due_date = current + timedelta(days=rng.randint(*DUE_LEAD_DAYS_RANGE))
+                order_date = _working_days_before(
+                    current, order_entry_rng.randint(*ORDER_LEAD_WORKING_DAYS)
+                )
+                entered_at = _office_moment(order_date, order_entry_time_rng)
 
                 order_num = f"S{job_seq:06d}"
                 job_num = f"J{job_seq:06d}"
                 job_seq += 1
 
                 sales_orders.append(
-                    SalesOrder(order_num=order_num, customer_code=customer.code)
+                    SalesOrder(
+                        order_num=order_num,
+                        customer_code=customer.code,
+                        order_date=order_date,
+                        entered_at=entered_at,
+                    )
                 )
                 sales_order_lines.append(
                     SalesOrderLine(

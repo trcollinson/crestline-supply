@@ -1,8 +1,9 @@
-from datetime import date, timedelta
+from datetime import UTC, date, time, timedelta
 
 import pytest
 
 from crestline.sim import generate_jobs
+from crestline.sim.clock import PLANT_TZ
 from crestline.sim.jobs import release_quantity
 
 START = date(2026, 7, 6)  # a Monday
@@ -64,6 +65,32 @@ def test_job_fields_are_in_range_and_reference_real_data(reference_data):
         assert job.qty_ordered == line.qty
         assert START <= job.release_date <= END
         assert job.due_date > job.release_date
+
+
+def test_orders_are_entered_one_to_five_working_days_before_release(reference_data):
+    result = generate_jobs(reference_data, START, END, SEED)
+
+    leads = set()
+    for order, job in zip(result.sales_orders, result.jobs, strict=True):
+        assert order.order_date.weekday() < 5
+        days_between = (job.release_date - order.order_date).days
+        lead = sum(
+            (order.order_date + timedelta(days=n)).weekday() < 5
+            for n in range(1, days_between + 1)
+        )
+        leads.add(lead)
+    assert leads == {1, 2, 3, 4, 5}
+
+
+def test_orders_are_entered_during_office_hours_on_the_order_date(reference_data):
+    result = generate_jobs(reference_data, START, END, SEED)
+
+    for order in result.sales_orders:
+        assert order.entered_at.tzinfo is UTC
+        assert order.entered_at.microsecond == 0
+        local = order.entered_at.astimezone(PLANT_TZ)
+        assert local.date() == order.order_date
+        assert time(8, 0) <= local.time() <= time(17, 0)
 
 
 def test_generate_jobs_rejects_end_before_start(reference_data):

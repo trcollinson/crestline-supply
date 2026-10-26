@@ -56,7 +56,9 @@ def _parser() -> argparse.ArgumentParser:
         help="first day after the window, YYYY-MM-DD (exclusive)",
     )
     backfill.add_argument(
-        "--seed", type=int, default=42, help="random seed (default: 42)"
+        "--seed",
+        type=int,
+        help="random seed (default: the seed in mess.yaml, 42)",
     )
     backfill.add_argument(
         "--out", type=Path, default=Path("out"), help="output folder (default: out)"
@@ -111,6 +113,59 @@ def _parser() -> argparse.ArgumentParser:
     )
     setup.set_defaults(run=_athena_setup)
 
+    curate = commands.add_parser(
+        "curate",
+        help="merge new raw ERP pages into the curated tables",
+        description=(
+            "Do what the poller's curate step does after every run: merge each "
+            "entity's raw pages not merged yet into its Iceberg table, with one "
+            "Athena MERGE per entity (AWS account and region from AWS_PROFILE and "
+            "AWS_REGION)."
+        ),
+    )
+    curate.add_argument(
+        "entities",
+        nargs="*",
+        metavar="ENTITY",
+        help="entities to curate (default: all)",
+    )
+    curate.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="merge from the first raw read, not from the last one merged",
+    )
+    curate.add_argument(
+        "--allow-mass-delete",
+        action="store_true",
+        help="let a MERGE delete more than 5%% of a table (once you have checked why)",
+    )
+    curate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print each MERGE instead of running it",
+    )
+    curate.set_defaults(run=_curate)
+
+    erp_api = commands.add_parser("erp-api", help="the deployed ERP API (ErpApiStack)")
+    erp_api_commands = erp_api.add_subparsers(
+        title="commands", metavar="COMMAND", required=True
+    )
+    secrets_command = erp_api_commands.add_parser(
+        "secrets",
+        help="create the API's secrets in Parameter Store",
+        description=(
+            "Create the deployed ERP API's client secret and token signing key as "
+            "SecureString parameters, if missing (AWS account and region from "
+            "AWS_PROFILE and AWS_REGION). Run before the first deploy."
+        ),
+    )
+    action = secrets_command.add_mutually_exclusive_group()
+    action.add_argument("--rotate", action="store_true", help="replace both values")
+    action.add_argument("--delete", action="store_true", help="remove both parameters")
+    secrets_command.set_defaults(run=_erp_api_secrets)
+    url = erp_api_commands.add_parser("url", help="print the deployed API's URL")
+    url.set_defaults(run=_erp_api_url)
+
     return parser
 
 
@@ -118,7 +173,7 @@ def _backfill(args: argparse.Namespace) -> None:
     summary = run_backfill(args.days, args.end, args.seed, args.out)
     print(
         f"Simulated {summary.first_day} .. {summary.last_day} "
-        f"({args.days} days, seed {args.seed}): "
+        f"({args.days} days, seed {summary.seed}): "
         f"{summary.jobs:,} jobs, {summary.jobs_complete:,} complete"
     )
     by_folder: dict[Path, list[tuple[Path, int]]] = defaultdict(list)
@@ -166,6 +221,70 @@ def _athena_setup(args: argparse.Namespace) -> None:
         f"Created the raw tables and source views in {athena.database} "
         f"(workgroup {athena.workgroup}): {_megabytes(scanned)} scanned"
     )
+
+
+def _curate(args: argparse.Namespace) -> None:
+    from crestline.stack import curate_setup
+    from erp_extract import curate
+    from erp_extract.curated import merge_sql
+    from erp_extract.entities import ENTITIES
+
+    setup = curate_setup()
+    for entity in args.entities or ENTITIES:
+        if not args.dry_run:
+            report = curate.curate(
+                entity,
+                setup,
+                rebuild=args.rebuild,
+                max_deleted_share=1.0
+                if args.allow_mass_delete
+                else curate.MAX_DELETED_SHARE,
+            )
+            if report["reads"]:
+                done = (
+                    f"merged {report['reads']} read(s) from {report['from']} "
+                    f"through {report['merged_through']}"
+                )
+            else:
+                done = f"nothing new since {report['merged_through']}"
+            if "upkept_on" in report:
+                done += ", compacted and vacuumed"
+            print(f"{entity}: {done}, {_megabytes(report['bytes_scanned'])} scanned")
+            continue
+        item = setup["table"].get_item(Key={"entity": entity}).get("Item", {})
+        merged_through = None if args.rebuild else item.get("merged_through")
+        reads = curate.new_reads(setup["s3"], setup["bucket"], entity, merged_through)
+        window = curate.pick_window(reads)
+        if window is None:
+            print(f"-- {entity}: nothing new to merge\n")
+            continue
+        print(
+            merge_sql(
+                entity,
+                curated_database=setup["curated_database"],
+                raw_database=setup["raw_database"],
+                first_read=window.first,
+                last_read=window.last,
+                starts_complete=window.starts_complete,
+            )
+        )
+
+
+def _erp_api_secrets(args: argparse.Namespace) -> None:
+    from crestline import erp_secrets
+
+    if args.delete:
+        removed = erp_secrets.delete()
+        print(f"Deleted: {', '.join(removed) or 'nothing (there were none)'}")
+        return
+    for name, outcome in erp_secrets.ensure(rotate=args.rotate).items():
+        print(f"{name}: {outcome}")
+
+
+def _erp_api_url(args: argparse.Namespace) -> None:
+    from crestline.stack import ERP_API_STACK_NAME, stack_outputs
+
+    print(stack_outputs(ERP_API_STACK_NAME)["ErpApiUrl"].rstrip("/"))
 
 
 def _megabytes(size: int) -> str:

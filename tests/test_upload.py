@@ -127,6 +127,19 @@ def test_files_the_backfill_no_longer_writes_are_deleted_from_that_date_only(out
     assert other_date in bucket_keys(s3)
 
 
+def test_the_pollers_raw_pages_on_the_same_date_are_never_pruned(out, s3):
+    # The ERP poller writes its pages under a source of its own; the backfill
+    # prunes only what it uploads (source=erp/, source=mes/, source=machines/).
+    poller = "source=erp-api/entity=Jobs/ingest_date=2026-10-01/20261001T050000Z-006-incremental.jsonl"
+    s3.put_object(Bucket=BUCKET, Key=poller, Body=b"a page")
+
+    first = upload_backfill(out, INGEST, BUCKET, s3)
+    second = upload_backfill(out, INGEST, BUCKET, s3)
+
+    assert first.deleted == second.deleted == []
+    assert poller in bucket_keys(s3)
+
+
 def test_raw_bucket_name_comes_from_the_stack_outputs():
     cloudformation = boto3.client("cloudformation")
     stack = {
@@ -169,8 +182,8 @@ def test_backfill_upload_twice_leaves_one_copy_of_each_file(tmp_path, monkeypatc
         planned = planned_uploads(out, date(2026, 8, 3))
         assert bucket_keys(s3) == sorted(planned)
 
-    files = len(planned)  # 7 ERP entities, 3 MES days, 2 brakes
-    assert files == 12
+    files = len(planned)  # 11 ERP entities, 3 MES days, 2 brakes
+    assert files == 16
     where = f"Uploaded to s3://{BUCKET}/ (ingest_date=2026-08-03):"
     assert printed == [
         f"{where} {files} new or changed, 0 unchanged, 0 deleted",

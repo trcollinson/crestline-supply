@@ -19,6 +19,7 @@ PLATFORM_MODULES = [
     "src/crestline/upload.py",
     "src/crestline/stack.py",
     "src/crestline/athena.py",
+    "src/crestline/erp_secrets.py",
 ]
 SQL_COMMENT = re.compile(r"--[^\n]*")
 

@@ -40,11 +40,11 @@ def test_margin_gap_splits_into_its_views_and_the_answer():
     assert not any("--" in part for part in parts)
 
 
-def test_setup_files_hold_ten_tables_and_eight_views():
+def test_setup_files_hold_fourteen_tables_and_eight_views():
     tables = statements("athena/tables.sql")
     for verb in ("drop table if exists", "create external table", "msck repair table"):
-        assert sum(part.startswith(verb) for part in tables) == 10, verb
-    assert len(tables) == 30
+        assert sum(part.startswith(verb) for part in tables) == 14, verb
+    assert len(tables) == 42
     assert all(
         part.startswith("create or replace view")
         for part in statements("athena/sources.sql")
