@@ -35,7 +35,7 @@ The extractor most people write first (sign in once, ask for what changed since 
 | Slow ERP (5 minutes a page) | 5,813 (31.1%), plus 55 deleted rows kept | 0 |
 | Slow ERP (15 minutes a page) | 17,457 (93.3%) | 0 |
 
-The robust one signs in again on a 401, waits out 429s, backs off on 5xx, pages by key, reads labor by sequence number, and sweeps the job tables every night, because no incremental read can see a change that doesn't move the timestamp. On AWS it runs hourly, lands every page in S3 untouched, and merges them into Iceberg tables that match the ERP exactly; the margin query above runs on them unchanged.
+The robust one signs in again on a 401, waits out 429s, backs off on 5xx, pages by key, reads labor by sequence number, and sweeps the job tables every night, because no incremental read can see a change that doesn't move the timestamp. A sweep deletes whatever it didn't see, so it has to prove it saw everything: it counts the ERP's rows when it starts and when it ends, and one that comes up short is filed as short and deletes nothing. On AWS it runs hourly, lands every page in S3 untouched, and merges them into Iceberg tables that match the ERP exactly; the margin query above runs on them unchanged.
 
 ## How it fits together
 
@@ -121,7 +121,7 @@ uv run crestline erp-api secrets
 - **CrestlineFoundation**: the raw and query-result buckets, a Glue database, and an Athena workgroup capped at 1 GB per query. The backfill's `--upload` puts the ERP export, MES files, and brake messages in the raw bucket.
 - **CrestlineErpApi**: the ERP API in a Lambda function behind a function URL, with its messes, replaying the ERP's history from Aug 3 at 24 times real time: an ERP day every hour. Its clock stops at the end of the history, Oct 1. `crestline erp-api secrets` puts its client secret and signing key in Parameter Store first.
 - **CrestlineCurated**: the Iceberg tables, one per ERP entity.
-- **CrestlineErpIngest**: the poller. Its first run starts as soon as the stack exists, then hourly. Each entity is extracted to S3, then checked and merged into its Iceberg table. `erpIngestAlarmEmail` is optional: it subscribes an address to failed-run alarms (confirm the email SNS sends).
+- **CrestlineErpIngest**: the poller. Its first run starts as soon as the stack exists, then hourly. Each entity is extracted to S3, then checked and merged into its Iceberg table. Every merge that can delete writes down exactly which keys it deleted, from the table's Iceberg snapshot before the merge, to `audit/merges/` in the curated bucket. A merge that would delete more than 5% of a table is refused, and the alarm address gets the count and a file of the keys. `erpIngestAlarmEmail` is optional: it subscribes an address to failed-run alarms (confirm the email SNS sends).
 
 About two and a half days later, the replay reaches the end of the history and the poller has read it all. Then point Athena's views at the curated tables, score them against the ERP, and run the margin query on them:
 
@@ -132,6 +132,16 @@ uv run crestline query margin-gap --engine athena
 ```
 
 `eval/curated.py` compares every curated table with the ERP's final state row for row, and the margin query in Athena with DuckDB's over the export, cell for cell.
+
+To see the delete guard work, plant a broken sweep: `eval/fire_drill.py` copies the newest `Jobs` sweep in the raw bucket, keeps only its first page, and files it as a complete read, as if a bug had fooled the extractor's check. Then merge:
+
+```sh
+uv run python eval/fire_drill.py
+uv run crestline curate Jobs
+uv run python eval/fire_drill.py --remove
+```
+
+`crestline curate` refuses: the merge would delete every job after page 1. Nothing in the table changes, the alarm address gets an email naming the count, the table's snapshot, and the read, and `audit/merges/entity=Jobs/` gets a `-refused.json` file listing every key it would have deleted. The poller's next run doesn't trip on it: its own sweep is newer and complete, so the merge starts there.
 
 Idle, all of it costs next to nothing. While the poller runs hourly, it's about $1 a month, nearly all Athena's 10 MB minimum per query: each run checks and merges eleven tables.
 
