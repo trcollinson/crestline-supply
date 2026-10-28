@@ -232,14 +232,18 @@ def _curate(args: argparse.Namespace) -> None:
     setup = curate_setup()
     for entity in args.entities or ENTITIES:
         if not args.dry_run:
-            report = curate.curate(
-                entity,
-                setup,
-                rebuild=args.rebuild,
-                max_deleted_share=1.0
-                if args.allow_mass_delete
-                else curate.MAX_DELETED_SHARE,
-            )
+            try:
+                report = curate.curate(
+                    entity,
+                    setup,
+                    rebuild=args.rebuild,
+                    max_deleted_share=1.0
+                    if args.allow_mass_delete
+                    else curate.MAX_DELETED_SHARE,
+                )
+            except curate.CurateFailed as failure:
+                # A refusal is the guard working, not a crash: say why, and stop.
+                raise SystemExit(f"{entity}: {failure}") from None
             if report["reads"]:
                 done = (
                     f"merged {report['reads']} read(s) from {report['from']} "

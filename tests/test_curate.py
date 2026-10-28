@@ -852,3 +852,15 @@ def test_the_diff_reads_the_table_as_of_the_snapshot_before_the_merge():
     assert 'from "crestline_curated"."erp_job_operations" for version as of 42' in sql
     assert "except" in sql and "order by jobnum, oprseq" in sql
     assert not re.search(r"\$\{\w+\}", sql)
+
+
+def test_crestline_curate_reports_a_refusal_without_a_traceback(world, monkeypatch):
+    from crestline.cli import main
+
+    world["athena"].hold("Jobs", keys_of_jobs(1309))
+    put_read(world, "20260803T061400Z", 0, "sweep", rows=1200)
+    monkeypatch.setattr("crestline.stack.curate_setup", lambda: world)
+    with pytest.raises(SystemExit) as stopped:
+        main(["curate", "Jobs"])
+    assert str(stopped.value).startswith("Jobs: merging Jobs's reads")
+    assert "would delete 109 of its 1,309 rows" in str(stopped.value)
