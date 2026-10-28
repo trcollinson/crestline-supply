@@ -1,4 +1,4 @@
-"""The ERP API's query options: `$filter`, `$orderby`, `$top`, `$skip`.
+"""The ERP API's query options: `$filter`, `$orderby`, `$top`, `$skip`, `$count`.
 
 A small, strict subset of OData, turned into one parameterized SQL query:
 
@@ -17,6 +17,9 @@ A small, strict subset of OData, turned into one parameterized SQL query:
 - `$skiptoken`: instead of `$skip`, an opaque cursor that `@odata.nextLink`
   carries when paging is consistent: the rows to skip and the instant the
   first page was read at, so later pages see the ERP as it was then.
+- `$count`: `true` adds `@odata.count`, how many rows match the filter as of
+  this page's instant, whatever `$top` and `$skip` say. A client checks a
+  full read against it: did it collect as many rows as the ERP holds?
 
 Field names are checked against the entity, and values are always passed as
 parameters, so nothing from the URL is pasted into the SQL.
@@ -34,7 +37,7 @@ from .store import Entity
 
 DEFAULT_TOP = 100
 MAX_TOP = 500
-OPTIONS = {"$filter", "$orderby", "$top", "$skip", "$skiptoken"}
+OPTIONS = {"$filter", "$orderby", "$top", "$skip", "$skiptoken", "$count"}
 TEXTUAL = ("TEXT", "DATE", "TIMESTAMP")  # ISO 8601 text in the store
 OPERATORS = {"eq": "=", "ne": "<>", "gt": ">", "ge": ">=", "lt": "<", "le": "<="}
 
@@ -63,6 +66,7 @@ class Query:
     order_by: list[str]  # SQL sort terms
     top: int
     skip: int
+    count: bool = False  # `$count=true`: also say how many rows match
 
     def sql(self, as_of: str | None = None) -> tuple[str, list[object]]:
         """One page plus one row, which tells whether another page follows.
@@ -79,6 +83,12 @@ class Query:
         )
         return sql, [*source_params, *self.params, self.top + 1, self.skip]
 
+    def count_sql(self, as_of: str | None = None) -> tuple[str, list[object]]:
+        """How many rows match the filter, as of `as_of`: every page, not one."""
+        source, source_params = self.entity.source(as_of)
+        where = f" WHERE {' AND '.join(self.where)}" if self.where else ""
+        return f"SELECT count(*) FROM {source}{where}", [*source_params, *self.params]
+
 
 def parse_query(entity: Entity, options: Mapping[str, str]) -> Query:
     unknown = sorted(
@@ -94,6 +104,7 @@ def parse_query(entity: Entity, options: Mapping[str, str]) -> Query:
         order_by=_parse_orderby(entity, options.get("$orderby", "")),
         top=min(_parse_count("$top", options.get("$top"), DEFAULT_TOP, 1), MAX_TOP),
         skip=_parse_count("$skip", options.get("$skip"), 0, 0),
+        count=_parse_boolean("$count", options.get("$count", "false")),
     )
 
 
@@ -288,6 +299,12 @@ def _parse_count(name: str, text: str | None, default: int, minimum: int) -> int
     if not text.isdigit() or int(text) < minimum:
         raise QueryError(f"{name} must be a whole number of at least {minimum}")
     return int(text)
+
+
+def _parse_boolean(name: str, text: str) -> bool:
+    if text not in ("true", "false"):
+        raise QueryError(f"{name} must be true or false")
+    return text == "true"
 
 
 def _check_field(entity: Entity, field: str) -> None:

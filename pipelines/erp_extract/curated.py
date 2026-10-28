@@ -14,7 +14,9 @@ This module is the one place the curated columns are written down:
 CuratedStack creates the tables from `COLUMNS`, and `merge_sql()` fills in
 the MERGE in `curated.sql` (next to this file) for one entity and one window
 of raw reads; `check_sql()` fills in `curated_check.sql`, the check the
-curate step runs before it.
+curate step runs before it. Around a MERGE that could delete, the curate step
+writes down which keys went: `deleted_sql()` (`curated_deleted.sql`) after it,
+or `gone_sql()` (`curated_gone.sql`) in its place if the check refused it.
 """
 
 import re
@@ -30,6 +32,8 @@ RAW_PAGES_TABLE = "raw_erp_api"  # in the raw database: the poller's pages, a li
 RAW_INGEST_DATES = ("2020-01-01", "2099-12-31")
 TEMPLATE = Path(__file__).with_name("curated.sql")
 CHECK_TEMPLATE = Path(__file__).with_name("curated_check.sql")
+GONE_TEMPLATE = Path(__file__).with_name("curated_gone.sql")
+DELETED_TEMPLATE = Path(__file__).with_name("curated_deleted.sql")
 PLACEHOLDER = re.compile(r"\$\{(\w+)\}")
 
 # entity -> its curated table
@@ -233,6 +237,39 @@ def check_sql(
         last_read,
         starts_complete,
     )
+
+
+def gone_sql(
+    entity: str,
+    *,
+    curated_database: str,
+    raw_database: str,
+    first_read: str,
+    last_read: str,
+    starts_complete: bool,
+) -> str:
+    """The keys the MERGE for this window would delete, one row each."""
+    sql = GONE_TEMPLATE.read_text(encoding="utf-8")
+    return _fill(
+        sql,
+        entity,
+        curated_database,
+        raw_database,
+        first_read,
+        last_read,
+        starts_complete,
+    )
+
+
+def deleted_sql(entity: str, *, curated_database: str, snapshot: int) -> str:
+    """The keys the table held at `snapshot` and doesn't hold now, one row each."""
+    sql = DELETED_TEMPLATE.read_text(encoding="utf-8")
+    values = {
+        "curated_table": f'"{curated_database}"."{TABLES[entity]}"',
+        "keys": ", ".join(column_name(field) for field in ENTITIES[entity][0]),
+        "snapshot": str(int(snapshot)),
+    }
+    return PLACEHOLDER.sub(lambda match: values[match.group(1)], sql)
 
 
 def _fill(

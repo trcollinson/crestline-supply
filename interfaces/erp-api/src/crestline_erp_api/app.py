@@ -178,6 +178,10 @@ def create_app(
                 for row in rows[: query.top]
             ]
         }
+        if query.count:
+            # A JSON number even with numbers as strings: that mess is the
+            # columns', and the count is not a column.
+            body["@odata.count"] = store.fetch(*query.count_sql(as_of))[0][0]
         if len(rows) > query.top:
             next_skip = query.skip + query.top
             # Nothing can drift in a store that isn't being replayed, so the

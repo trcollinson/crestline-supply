@@ -195,12 +195,27 @@ def test_master_data_has_no_change_stamp_to_filter_on(client):
         "$filter=JobNum eq",
         "$filter=(JobNum eq 'J100001'",
         "$orderby=Nope",
+        "$count=maybe",
     ],
 )
 def test_a_query_the_api_cannot_serve_is_a_400(client, query):
     response = client.get(f"{BASE}/Jobs?{query}")
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "BadRequest"
+
+
+def test_count_is_every_row_the_filter_matches_whatever_the_page(client, store):
+    every = len(export(store, "JobOperations"))
+    page = client.get(f"{BASE}/JobOperations?$count=true&$top=7&$skip=20").json()
+    assert page["@odata.count"] == every and len(page["value"]) == 7
+    assert "count" not in page["@odata.nextLink"]  # the next page needn't count again
+
+    url = f"{BASE}/JobOperations?$filter=OprSeq ge 30&$count=true&$top=1"
+    matching = [row for row in export(store, "JobOperations") if row["OprSeq"] >= 30]
+    assert client.get(url).json()["@odata.count"] == len(matching) < every
+
+    assert "@odata.count" not in client.get(f"{BASE}/Jobs?$count=false").json()
+    assert "@odata.count" not in client.get(f"{BASE}/Jobs").json()
 
 
 def test_an_unknown_entity_is_a_404(client):
@@ -353,6 +368,13 @@ def test_two_reads_at_two_clocks_differ_and_each_is_the_erp_as_of_then(
     assert (
         labor_rows[0] < labor_rows[1] < labor_rows[2]
     )  # the batch posted at batches[1]
+
+
+def test_count_is_the_erp_as_of_the_page(settings, clock, erp_changes, batches):
+    for at in (batches[1] - timedelta(seconds=1), batches[1]):
+        frozen = app_at(settings, clock, clock_start=at, clock_speed=0.0)
+        page = frozen.get(f"{BASE}/LaborDetails?$count=true&$top=1").json()
+        assert page["@odata.count"] == len(as_of(erp_changes, at, "LaborDetails"))
 
 
 def test_no_served_row_is_newer_than_the_erps_clock(settings, clock, batches):

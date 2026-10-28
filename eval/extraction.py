@@ -50,7 +50,7 @@ from erp_extract.merge import MergeTally, rebuild
 from erp_extract.naive import NaiveExtractor, Tally
 from erp_extract.raw import RawWriter
 from erp_extract.replica import Replica
-from erp_extract.robust import RobustExtractor
+from erp_extract.robust import SLACK, RobustExtractor
 
 PLANT_TZ = ZoneInfo("America/Denver")
 WALL_START = 1_800_000_000.0  # where the harness's wall clock starts, epoch seconds
@@ -360,6 +360,12 @@ def report(scores: Scores) -> str:
         lines.append(
             f"Reads completed: {reads}; signed in {tally.logins:,} times; "
             f"waited {tally.waited_seconds:,.0f} s when told to slow down or a server failed"
+        )
+        short = ", ".join(f"{e} {n}" for e, n in tally.short.most_common()) or "none"
+        gaps = ", ".join(f"{e} {n}" for e, n in tally.gaps.most_common() if n) or "0"
+        lines.append(
+            f"Complete reads that came up short: {short}; the biggest gap a good "
+            f"one needed outside the ERP's counts: {gaps} (slack {SLACK})"
         )
     if scores.merge:
         lines.append("What the nightly sweeps changed, over all nights:")

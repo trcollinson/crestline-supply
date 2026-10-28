@@ -23,6 +23,14 @@ Each run signs in, then reads every entity, writing each read's pages raw
   disappear without a trace, so the four job entities are also read in full
   (every night by default). A sweep is a complete picture: anything it
   doesn't contain is gone. `merge.py` turns the raw reads into a copy.
+- **A complete read has to prove it.** A read that dies on an error is
+  dropped, but one the ERP ends early with a clean `200` (no `nextLink`, or
+  an empty page) looks finished, and a sweep that stops early would delete
+  every row after the cut. So a full read or a sweep asks the ERP how many
+  rows it holds when it starts and again when it ends (`$count`), and the
+  rows collected must fall between the two, give or take `SLACK`. One that
+  doesn't is filed as `shortfull` or `shortsweep`: its rows still update the
+  copy, but it deletes nothing, and the run fails so someone hears of it.
 
 Soft-deleted order lines are kept with their `Deleted` flag, as the ERP keeps
 them; split jobs (`J104221-1`) are simply new keys.
@@ -33,7 +41,7 @@ import random
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -41,9 +49,16 @@ from pathlib import Path
 from .client import ErpClient, Response, entity_path
 from .entities import ENTITIES, key_of, literal
 from .formats import iso
-from .raw import Page, RawWriter
+from .merge import COMPLETE
+from .raw import Page, RawWriter, raw_key
 
 PAGE_SIZE = 500
+# How far the rows a complete read collects may stray outside the ERP's counts
+# at its start and end. A busy ERP inserts rows ahead of the cursor and deletes
+# some behind it, so a good read can collect a few more than either count. Kept
+# far below a page, so a lost page can never hide in it; the eval reports the
+# biggest gap a good read has needed.
+SLACK = 10
 OVERLAP = timedelta(hours=1)
 MAX_ATTEMPTS = 8
 BACKOFF_SECONDS = 1.0  # the first wait after a 5xx; doubles each time
@@ -56,6 +71,42 @@ SWEPT = ("Jobs", "JobOperations", "JobMaterials", "JobCosts")
 
 class ReadFailed(Exception):
     """A request kept failing; the read it was part of is dropped."""
+
+
+@dataclass(frozen=True)
+class Check:
+    """Did a full read or a sweep collect everything the ERP held?"""
+
+    start: int | None  # `@odata.count` on its first page; None if the ERP sent none
+    end: int | None  # `@odata.count` asked for once its last page was in
+    collected: int  # distinct keys across its pages
+    # It ended on a full page with no nextLink, so it asked once more for the
+    # rows after the last key: how many came back (None if it didn't need to).
+    beyond_last: int | None = None
+
+    @property
+    def gap(self) -> int:
+        """How far `collected` falls outside the two counts (0 if between them)."""
+        if self.start is None or self.end is None:
+            return 0
+        low, high = min(self.start, self.end), max(self.start, self.end)
+        return max(0, low - self.collected, self.collected - high)
+
+    @property
+    def short(self) -> bool:
+        return (
+            self.start is None
+            or self.end is None
+            or self.gap > SLACK
+            or bool(self.beyond_last)
+        )
+
+    def __str__(self) -> str:
+        found = f"; {self.beyond_last} more after its last full page"
+        return (
+            f"collected {self.collected} rows; the ERP held {self.start} at the "
+            f"start and {self.end} at the end" + (found if self.beyond_last else "")
+        )
 
 
 @dataclass
@@ -92,6 +143,11 @@ class Tally:
     # rows handed over twice within one read, by entity
     pulled_twice: Counter[str] = field(default_factory=Counter)
     rows: Counter[str] = field(default_factory=Counter)  # rows read, by kind of read
+    # complete reads that couldn't prove it, by entity, and what each found
+    short: Counter[str] = field(default_factory=Counter)
+    short_reads: list[str] = field(default_factory=list)
+    # the biggest gap a complete read's check found, by entity (see Check.gap)
+    gaps: Counter[str] = field(default_factory=Counter)
     logins: int = 0
     waited_seconds: float = 0.0
 
@@ -107,6 +163,7 @@ class RobustExtractor:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.time,
         sweep_every: int = 1,
+        check_complete: bool = True,
     ) -> None:
         self.client = client
         self.writer = writer
@@ -115,6 +172,7 @@ class RobustExtractor:
         self.sleep = sleep
         self.clock = clock
         self.sweep_every = sweep_every
+        self.check_complete = check_complete  # off only to show what it catches
         self.tally = Tally()
 
     def run(self, entities: Iterable[str] | None = None) -> None:
@@ -171,11 +229,11 @@ class RobustExtractor:
         columns = ENTITIES[entity][0]
         pages: list[Page] = []
         after: dict | None = None
+        checked = kind in COMPLETE and self.check_complete
         while True:
-            conditions = [c for c in (condition, keyset(columns, after)) if c]
-            options = {"orderby": ",".join(columns), "top": str(PAGE_SIZE)}
-            if conditions:
-                options["filter"] = " and ".join(f"({c})" for c in conditions)
+            options = page_options(columns, condition, after)
+            if checked and not pages:
+                options["count"] = "true"  # the ERP's count as the read starts
             path = entity_path(entity, **options)
             requested_at = datetime.fromtimestamp(self.clock(), UTC)
             response = self._get(path)
@@ -196,6 +254,17 @@ class RobustExtractor:
                 break
             after = rows[-1]
 
+        if checked:
+            check = self._check(entity, pages)
+            self.tally.gaps[entity] = max(self.tally.gaps[entity], check.gap)
+            if check.short:
+                kind = f"short{kind}"  # one word: `kind_of` splits on the last hyphen
+                pages = [replace(page, read=kind) for page in pages]
+                name = raw_key(pages, self._ordinal, self._ingest_date)
+                self.tally.short[entity] += 1
+                self.tally.short_reads.append(f"{name}: {check}")
+            pages[-1] = replace(pages[-1], check=asdict(check) | {"short": check.short})
+
         self.writer.write(pages, self._ordinal, self._ingest_date)
         self._ordinal += 1
         self.tally.reads[kind] += 1
@@ -212,6 +281,29 @@ class RobustExtractor:
                 self.state.sequences[entity] = max(
                     seen + [self.state.sequences.get(entity, 0)]
                 )
+
+    def _check(self, entity: str, pages: list[Page]) -> Check:
+        """Count the ERP again, now the read is in, and compare (see `Check`).
+
+        A real last page is almost never exactly a page long, so a full one
+        with no nextLink may be a dropped link: ask for the rows after its last
+        key. None means it was the end; any means the read stopped short.
+        Every request goes through `_get`, so one that keeps failing drops
+        the whole read, as any other would.
+        """
+        columns = ENTITIES[entity][0]
+        last = pages[-1].body
+        beyond_last = None
+        if len(last["value"]) == PAGE_SIZE and "@odata.nextLink" not in last:
+            options = page_options(columns, None, last["value"][-1])
+            beyond_last = len(self._get(entity_path(entity, **options)).body["value"])
+        end = self._get(entity_path(entity, top="1", count="true"))
+        return Check(
+            start=pages[0].body.get("@odata.count"),
+            end=end.body.get("@odata.count"),
+            collected=len(set(keys_of(entity, pages))),
+            beyond_last=beyond_last,
+        )
 
     def _get(self, path: str) -> Response:
         """A page, answering each kind of failure the way it asks to be answered."""
@@ -241,6 +333,17 @@ class RobustExtractor:
     def _wait(self, seconds: float) -> None:
         self.tally.waited_seconds += seconds
         self.sleep(seconds)
+
+
+def page_options(
+    columns: tuple[str, ...], condition: str | None, after: dict | None
+) -> dict[str, str]:
+    """The query for the page after `after`: in key order, a page long."""
+    options = {"orderby": ",".join(columns), "top": str(PAGE_SIZE)}
+    conditions = [c for c in (condition, keyset(columns, after)) if c]
+    if conditions:
+        options["filter"] = " and ".join(f"({c})" for c in conditions)
+    return options
 
 
 def keyset(columns: tuple[str, ...], after: dict | None) -> str | None:

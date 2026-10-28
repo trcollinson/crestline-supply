@@ -215,6 +215,8 @@ def assert_exact(scores) -> None:
         assert (s.missed, s.wrongly_deleted, s.stale) == (0, 0, 0), entity
         assert (s.kept_deleted, s.pulled_twice) == (0, 0), entity
         assert s.correct == s.erp_rows, entity
+    if scores.extractor == "robust":
+        assert scores.tally.short == {}  # every complete read proved it
 
 
 def test_the_robust_extractor_is_exact_with_every_mess_on(messy_db, messy, tmp_path):
@@ -278,3 +280,4 @@ def test_the_report_names_the_extractor_and_what_its_sweeps_did(messy_db, tmp_pa
     assert "(0.0%)" in text and "holds 0 rows the ERP has deleted" in text
     assert "What the nightly sweeps changed" in text
     assert "deleted rows removed" in text
+    assert "Complete reads that came up short: none" in text

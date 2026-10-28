@@ -131,6 +131,8 @@ class ErpIngestStack(cdk.Stack):
         ).grant_read(extractor)
 
         self._raw_pages_table(raw_bucket)
+        # Made before the curator, which emails it when it refuses a merge.
+        topic = self._alarm_topic(alarm_email)
         curator = lambda_.Function(
             self,
             "Curator",
@@ -148,6 +150,8 @@ class ErpIngestStack(cdk.Stack):
                 "CRESTLINE_ATHENA_WORKGROUP": ATHENA_WORKGROUP,
                 "CRESTLINE_RAW_DATABASE": GLUE_DATABASE,
                 "CRESTLINE_CURATED_DATABASE": CURATED_DATABASE,
+                "CRESTLINE_CURATED_BUCKET": curated_bucket.bucket_name,
+                "CRESTLINE_ALARM_TOPIC": topic.topic_arn,
             },
             log_group=logs.LogGroup(
                 self,
@@ -157,6 +161,7 @@ class ErpIngestStack(cdk.Stack):
             ),
         )
         state.grant_read_write_data(curator)
+        topic.grant_publish(curator)
         self._let_curate(curator, raw_bucket, results_bucket, curated_bucket)
 
         run = sfn.StateMachine(
@@ -179,12 +184,20 @@ class ErpIngestStack(cdk.Stack):
             ),
         )
 
-        self._alarm(run, alarm_email)
+        self._alarm(run, topic)
 
         cdk.CfnOutput(self, "StateMachineArn", value=run.state_machine_arn)
         cdk.CfnOutput(self, "StateTableName", value=state.table_name)
 
-    def _alarm(self, run: sfn.IStateMachine, email: str | None) -> None:
+    def _alarm_topic(self, email: str | None) -> sns.ITopic:
+        """The topic every alarm goes to; `-c erpIngestAlarmEmail=...` subscribes an address."""
+        topic = sns.Topic(self, "Alarm", display_name="Crestline ERP poller")
+        if email:
+            topic.add_subscription(subscriptions.EmailSubscription(email))
+        cdk.CfnOutput(self, "AlarmTopicArn", value=topic.topic_arn)
+        return topic
+
+    def _alarm(self, run: sfn.IStateMachine, topic: sns.ITopic) -> None:
         """Tell someone when a run doesn't succeed.
 
         A failed run says so only in its own execution history, and nobody
@@ -192,11 +205,10 @@ class ErpIngestStack(cdk.Stack):
         before anyone looked. Step Functions reports every run's end to
         EventBridge; this rule sends the ones that didn't succeed to an SNS
         topic. `-c erpIngestAlarmEmail=...` subscribes an address (SNS emails
-        it once to confirm); without it, subscribe to the topic yourself.
+        it once to confirm); without it, subscribe to the topic yourself. The
+        curate step also emails it directly when it refuses a merge, or a
+        merge deletes other than what its check predicted (`curate.alert`).
         """
-        topic = sns.Topic(self, "Alarm", display_name="Crestline ERP poller")
-        if email:
-            topic.add_subscription(subscriptions.EmailSubscription(email))
         detail = events.EventField.from_path
         events.Rule(
             self,
@@ -221,7 +233,6 @@ class ErpIngestStack(cdk.Stack):
                 )
             ],
         )
-        cdk.CfnOutput(self, "AlarmTopicArn", value=topic.topic_arn)
 
     def _raw_pages_table(self, raw_bucket: s3.IBucket) -> None:
         """`raw_erp_api`: the raw pages as Athena reads them, one line of text each.
@@ -285,7 +296,9 @@ class ErpIngestStack(cdk.Stack):
         # Athena writes each query's result file to the workgroup's bucket.
         results_bucket.grant_read(curator)
         results_bucket.grant_put(curator)
-        # The curated tables' files: written by MERGE and OPTIMIZE, deleted by VACUUM.
+        # The curated tables' files: written by MERGE and OPTIMIZE, deleted by
+        # VACUUM; their metadata, read for the snapshot ID before a MERGE; and
+        # the audit files under audit/merges/.
         curated_bucket.grant_read_write(curator)
         arn = f"arn:{self.partition}"
         where = f"{self.region}:{self.account}"

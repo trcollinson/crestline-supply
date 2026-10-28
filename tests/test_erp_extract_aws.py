@@ -199,6 +199,31 @@ def test_a_dropped_read_fails_the_entity_after_saving_what_completed(aws_world, 
     assert len(waits) == 7  # backed off between the eight tries of the sweep's page
 
 
+def test_a_short_sweep_is_written_and_saved_then_fails_the_entity(aws_world, api):
+    transport, _ = api
+    aws.extract("Jobs", aws_world, seed="r1", transport=transport)
+
+    def sweep_cut(method, path, headers, body):
+        # The sweep's first page comes back a clean 200 with three rows and
+        # no nextLink, as if the ERP had nothing more.
+        response = transport(method, path, headers, body)
+        if "%24filter" not in path and "%24count=true" in path and "top=500" in path:
+            cut = {"value": response.body["value"][:3]}
+            cut["@odata.count"] = response.body["@odata.count"]
+            return Response(200, response.headers, cut)
+        return response
+
+    with pytest.raises(aws.EntityFailed, match="Jobs: a complete read came up short"):
+        aws.extract("Jobs", aws_world, seed="r2", transport=sweep_cut)
+
+    keys = [
+        o["Key"] for o in aws_world["s3"].list_objects_v2(Bucket=BUCKET)["Contents"]
+    ]
+    assert sum(k.endswith("-shortsweep.jsonl") for k in keys) == 1
+    item = aws_world["table"].get_item(Key={"entity": "Jobs"})["Item"]
+    assert item["runs"] == 2  # saved first, so the retry is a new run
+
+
 def test_the_handler_names_its_entity(monkeypatch):
     with pytest.raises(ValueError, match="no entity Widgets"):
         aws.handler({"entity": "Widgets"}, None)

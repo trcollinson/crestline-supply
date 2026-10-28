@@ -270,3 +270,18 @@ def test_an_alarm_email_given_at_deploy_time_is_subscribed():
     alarmed.has_resource_properties(
         "AWS::SNS::Subscription", {"Protocol": "email", "Endpoint": "ops@example.com"}
     )
+
+
+def test_the_curator_writes_audits_to_the_curated_bucket_and_emails_the_alarm(
+    template,
+):
+    _, curator = function(template, "erp_extract.curate.handler")
+    env = curator["Properties"]["Environment"]["Variables"]
+    [topic] = template.find_resources("AWS::SNS::Topic")
+    assert env["CRESTLINE_ALARM_TOPIC"] == {"Ref": topic}
+    assert "CuratedBucket" in json.dumps(env["CRESTLINE_CURATED_BUCKET"])
+    statements = role_statements(template, "erp_extract.curate.handler")
+    [publish] = [s for s in statements if s["Action"] == "sns:Publish"]
+    assert publish["Resource"] == {"Ref": topic}
+    # The snapshot ID comes from the table's metadata, which Glue points to.
+    assert any("glue:GetTable" in json.dumps(s["Action"]) for s in statements)

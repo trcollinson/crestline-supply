@@ -38,7 +38,11 @@ def curate_setup(cloudformation=None) -> dict:
         "workgroup": foundation["AthenaWorkGroupName"],
         "raw_database": foundation["GlueDatabaseName"],
         "curated_database": curated["CuratedDatabaseName"],
+        "curated_bucket": curated["CuratedBucketName"],
+        "alarm_topic": ingest["AlarmTopicArn"],
         "s3": boto3.client("s3"),
         "athena": boto3.client("athena"),
+        "glue": boto3.client("glue"),
+        "sns": boto3.client("sns"),
         "table": boto3.resource("dynamodb").Table(ingest["StateTableName"]),
     }

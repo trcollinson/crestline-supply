@@ -28,12 +28,15 @@ SOURCE = "source=erp-api"
 class Page:
     entity: str
     run: str
-    read: str  # full, incremental, sequence, or sweep
+    read: str  # full, incremental, sequence, sweep, shortfull, or shortsweep
     page: int
     url: str
     requested_at: str  # the extractor's clock, ISO 8601 UTC
     server_time: str  # the ERP's Date header, ISO 8601 UTC
     body: dict
+    # On the last page of a full read or a sweep: how its completeness was
+    # checked (`robust.Check`), so the file says why it was trusted or not.
+    check: dict | None = None
 
 
 def raw_key(pages: list[Page], ordinal: int, ingest_date: str) -> str:

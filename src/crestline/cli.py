@@ -247,6 +247,8 @@ def _curate(args: argparse.Namespace) -> None:
                 )
             else:
                 done = f"nothing new since {report['merged_through']}"
+            if report.get("audit"):
+                done += f", {report['rows_deleted_actual']:,} deleted (audit: {report['audit']})"
             if "upkept_on" in report:
                 done += ", compacted and vacuumed"
             print(f"{entity}: {done}, {_megabytes(report['bytes_scanned'])} scanned")

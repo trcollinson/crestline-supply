@@ -171,6 +171,7 @@ def extract(
         # The ERP's clock hadn't moved since the last run: nothing was read.
         "skipped": bool(tally.skipped),
         "reads": dict(tally.reads),
+        "short": tally.short[entity],
         "rows": dict(tally.rows),
         "requests": {str(status): n for status, n in sorted(tally.requests.items())},
         "logins": tally.logins,
@@ -179,5 +180,12 @@ def extract(
     if tally.abandoned:
         raise EntityFailed(
             f"{entity}: {tally.abandoned[entity]} read(s) dropped; {report}"
+        )
+    if tally.short:
+        # Written, so its rows still count, but filed as short, so it deletes
+        # nothing. Failing makes Step Functions read again, and the alarm
+        # fires if the retries come up short too.
+        raise EntityFailed(
+            f"{entity}: a complete read came up short: " + "; ".join(tally.short_reads)
         )
     return report

@@ -296,6 +296,10 @@ def test_numbers_as_strings_with_eight_decimals(settings, wall):
     # Filters still take numbers.
     big = strings.get(f"{BASE}/Jobs?$filter=ProdQty ge 40&$top=500").json()["value"]
     assert big and all(float(row["ProdQty"]) >= 40 for row in big)
+    # The count is the API's, not a column, so it stays a number.
+    assert isinstance(
+        strings.get(f"{BASE}/Jobs?$count=true").json()["@odata.count"], int
+    )
 
 
 def from_legacy(value: str) -> datetime:
