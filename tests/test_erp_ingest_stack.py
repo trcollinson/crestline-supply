@@ -120,7 +120,10 @@ def test_a_run_fails_naming_the_entities_that_failed(template):
     assert "$exists(error)" in choice["Choices"][0]["Condition"]
     failed = states[choice["Choices"][0]["Next"]]
     assert failed["Type"] == "Fail" and failed["Error"] == "EntitiesFailed"
-    assert states[choice["Default"]]["Type"] == "Succeed"
+    # With none failed, the data-shape checks run before the run succeeds (M3).
+    checks = states[choice["Default"]]
+    assert checks["Type"] == "Task"
+    assert states[checks["Next"]]["Type"] == "Succeed"
     assert (
         only(template, "AWS::StepFunctions::StateMachine")["Properties"][
             "StateMachineType"
@@ -144,7 +147,7 @@ def test_the_schedule_starts_a_run_hourly_unless_told_otherwise(template):
 
 def test_logs_are_kept_a_week_and_resources_carry_the_cost_tags(template):
     groups = template.find_resources("AWS::Logs::LogGroup").values()
-    assert len(groups) == 2  # the extractor's and the curator's
+    assert len(groups) == 3  # the extractor's, the curator's, and the checker's
     for group in groups:
         assert (group["Properties"]["RetentionInDays"], group["DeletionPolicy"]) == (
             7,
@@ -285,3 +288,19 @@ def test_the_curator_writes_audits_to_the_curated_bucket_and_emails_the_alarm(
     assert publish["Resource"] == {"Ref": topic}
     # The snapshot ID comes from the table's metadata, which Glue points to.
     assert any("glue:GetTable" in json.dumps(s["Action"]) for s in statements)
+
+
+def test_the_checker_runs_the_data_shape_checks(template):
+    _, checker = function(template, "checks.aws.erp_handler")
+    assert checker["Properties"]["Environment"]["Variables"]["CRESTLINE_STATE_TABLE"]
+    actions = {
+        action
+        for statement in role_statements(template, "checks.aws.erp_handler")
+        for action in (
+            statement["Action"]
+            if isinstance(statement["Action"], list)
+            else [statement["Action"]]
+        )
+    }
+    assert {"athena:StartQueryExecution", "glue:GetTable"} <= actions
+    assert "glue:UpdateTable" not in actions  # it reads, never writes

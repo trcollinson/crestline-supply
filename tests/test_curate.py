@@ -75,6 +75,18 @@ def test_every_entity_has_a_curated_table_with_the_stores_columns_and_types(
     assert all(name.startswith("erp_") for name in TABLES.values())
 
 
+def test_a_field_has_one_type_wherever_it_appears():
+    # column_name() decides `_utc` from the field name alone.
+    kinds: dict[str, set[str]] = {}
+    for fields in COLUMNS.values():
+        for field, kind in fields:
+            kinds.setdefault(field, set()).add(kind)
+    assert {field: k for field, k in kinds.items() if len(k) > 1} == {}
+    assert column_name("LastModified") == "lastmodified_utc"
+    assert column_name("JobNum") == "jobnum"
+    assert column_name("PayrollDate") == "payrolldate"  # a date, not a timestamp
+
+
 def jobs_merge(**options) -> str:
     settings = {
         "curated_database": "crestline_curated",
@@ -149,7 +161,9 @@ def test_types_are_fixed_from_what_the_api_served():
     # /Date(ms)/ or ISO 8601, either way a date or a UTC timestamp.
     assert "when payrolldate like '/Date(%'" in sql
     assert "from_iso8601_date(payrolldate)" in sql
-    assert "from_iso8601_timestamp(lastmodified) end at time zone 'UTC'" in sql
+    assert "from_iso8601_timestamp(lastmodified_utc) end at time zone 'UTC'" in sql
+    # The column says its clock; the JSON path keeps the ERP's field name.
+    assert "json_extract_scalar(record, '$.LastModified') as lastmodified_utc" in sql
     assert "\n               jobnum,\n" in sql  # text stays as it is
 
 

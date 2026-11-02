@@ -15,6 +15,10 @@ mess_level: 2
 
 # mes:
 #   forgot_scan_off_rate: 0.03    # a supervisor closes these at 06:00 next working morning; 0 = never forgotten
+#   min_recorded_downtime_minutes: 5      # the downtime file: a shorter stop is never written down (microstops never are); 0 = every stop
+#   always_recorded_downtime_minutes: 30  # a stop at least this long is always written down
+#   downtime_unrecorded_rate: 0.4         # share of the stops in between that nobody writes down; 0 = every candidate logged
+#   free_text_noise: high         # reason_text as people write it (jam, JAMMED, jam - see Ray, blank); none = the canonical phrase
 #
 # erp:
 #   labor_rounding_hours: 0.1     # MES labor rounds to 0.1 hr when it posts; 0 = exact
@@ -30,4 +34,13 @@ mess_level: 2
 #   job_split_rate: 0.02          # share of jobs split into J and J-1 after release; 0 = none
 #
 # machines:
-#   counter_rollover_bits: 16     # PB-02's polled counter wraps at 65,535; null = never wraps
+#   counter_rollover_bits: 16     # the polled counters (PB-02, PEM-01) wrap at 65,535; null = never wrap
+#   counter_reset_rate: 0.1       # share of a legacy machine's working days with a power cycle that resets its counter to 0; 0 = never
+#   clock_drift_seconds:          # how far each clock wanders from true time (RMS seconds); 0 = exact. GW03 keeps NTP time
+#     LSR-01: 5
+#     PB-01: 140
+#     GW02: 20
+#   duplicate_rate: 0.005         # share of messages a gateway delivers twice (QoS 1 redelivery); 0 = never
+#   outages_per_week: 2           # per gateway; GW01 and EDGE-LASER buffer and replay, GW02 loses, GW03 replays in order; 0 = none
+#   outage_minutes: [2, 45]       # how long an outage lasts, uniform between the two
+#   malformed_json_rate: 0.001    # share of GW01's messages that arrive as truncated JSON; 0 = never

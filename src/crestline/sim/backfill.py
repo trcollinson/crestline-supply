@@ -82,6 +82,10 @@ def run_backfill(
     written |= mes.write_labor_files(
         scans, first_day, last_day, extracted_at, out_dir / "mes" / "outbound"
     )
+    stops = mes.downtime_records(truth, reference, mess.mes, seed)
+    written |= mes.write_downtime_files(
+        stops, first_day, last_day, extracted_at, out_dir / "mes" / "outbound"
+    )
 
     # The ERP gets its own order book and the MES labor, never the simulation.
     released_at = dict(truth["truth_jobs"].select("job_num", "released_at").iter_rows())
@@ -90,7 +94,7 @@ def run_backfill(
     )
     written |= erp.write_erp(erp_changes, out_dir / "erp")
 
-    written |= machines.write_brake_streams(
+    written |= machines.write_machine_streams(
         truth, reference, mess.machines, seed, out_dir / "machines"
     )
 
@@ -113,7 +117,8 @@ def _remove_previous_system_outputs(out_dir: Path) -> None:
         "mes/outbound/labor_*.csv",
         "erp/export/*.jsonl",
         "erp/erp.db",
-        "machines/pb0*.jsonl",
+        "mes/outbound/downtime_*.csv",
+        "machines/*.jsonl",
     ):
         for path in out_dir.glob(pattern):
             path.unlink()

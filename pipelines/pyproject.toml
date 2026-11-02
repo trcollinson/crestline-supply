@@ -11,6 +11,6 @@ requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# The package sits directly in this folder (pipelines/erp_extract/).
-module-name = "erp_extract"
+# The packages sit directly in this folder (pipelines/erp_extract/, pipelines/machine_curate/).
+module-name = ["erp_extract", "machine_curate"]
 module-root = ""

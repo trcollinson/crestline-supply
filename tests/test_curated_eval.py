@@ -34,7 +34,7 @@ def test_erp_rows_are_the_version_valid_then_in_curated_names_and_types(tmp_path
             "jobnum": "J100001",
             "prodqty": 40,
             "jobcomplete": False,
-            "lastmodified": datetime(2026, 7, 6, 14, 0, tzinfo=UTC),
+            "lastmodified_utc": datetime(2026, 7, 6, 14, 0, tzinfo=UTC),
         }
     }
     after = curated_eval.erp_rows(store, "Jobs", T2)

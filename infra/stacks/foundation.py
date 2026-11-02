@@ -6,7 +6,9 @@ M1 needs four things, and this stack is all of them:
   under `source=<erp|mes|machines>/entity=<name>/ingest_date=YYYY-MM-DD/`;
 - an **Athena results bucket** that clears out old query results by itself;
 - the **Glue database** `crestline_raw`, home of the external tables that
-  Athena reads the raw files through;
+  Athena reads the raw files through, and `crestline_fixtures`, where the
+  opt-in Athena tests run the same views over small planted fixtures (their
+  views reuse names like `mes_labor`, so they need a database of their own);
 - an **Athena workgroup** that refuses any query scanning more than 1 GB.
 
 Idle, this costs next to nothing: two small buckets, a workgroup, and a
@@ -29,6 +31,7 @@ from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
 GLUE_DATABASE = "crestline_raw"
+FIXTURE_DATABASE = "crestline_fixtures"
 ATHENA_WORKGROUP = "crestline"
 
 # Athena bills $5 per TB scanned. The 90-day margin query reads about 44 MB,
@@ -100,6 +103,15 @@ class FoundationStack(cdk.Stack):
                 description="External tables over the raw bucket, one per entity",
             ),
         )
+        fixtures = glue.CfnDatabase(
+            self,
+            "FixtureDatabase",
+            catalog_id=self.account,
+            database_input=glue.CfnDatabase.DatabaseInputProperty(
+                name=FIXTURE_DATABASE,
+                description="The same views over small planted test fixtures",
+            ),
+        )
 
         workgroup = athena.CfnWorkGroup(
             self,
@@ -130,4 +142,5 @@ class FoundationStack(cdk.Stack):
         cdk.CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
         cdk.CfnOutput(self, "AthenaResultsBucketName", value=results_bucket.bucket_name)
         cdk.CfnOutput(self, "GlueDatabaseName", value=database.ref)
+        cdk.CfnOutput(self, "FixtureDatabaseName", value=fixtures.ref)
         cdk.CfnOutput(self, "AthenaWorkGroupName", value=workgroup.ref)

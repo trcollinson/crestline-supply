@@ -26,6 +26,11 @@ Only this module reads the ERP's store directly (`erp.db`, the final state);
 the extractor under test sees nothing but the API.
 
     uv run python eval/extraction.py [--out out] [--mess mess.yaml] [--extractor both]
+
+`--nightly-at 09:00 --erp-seconds-per-request 300` reads while the ERP is
+busy instead: order entry, releases, and the 08:00 cancellations all land
+between one page and the next, which is what the full reads' count check
+(and its slack) has to survive.
 """
 
 import argparse
@@ -391,6 +396,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seconds-per-request", type=float, default=0.25)
     parser.add_argument("--erp-seconds-per-request", type=float, default=30.0)
     parser.add_argument(
+        "--nightly-at",
+        type=time.fromisoformat,
+        default=Scenario.nightly_at,
+        help="plant time each run starts (default 23:00, after the labor batch)",
+    )
+    parser.add_argument(
         "--extractor", choices=["naive", "robust", "both"], default="both"
     )
     parser.add_argument(
@@ -402,6 +413,7 @@ def main(argv: list[str] | None = None) -> None:
 
     db_path = args.out / "erp" / "erp.db"
     scenario = Scenario(
+        nightly_at=args.nightly_at,
         seconds_per_request=args.seconds_per_request,
         erp_seconds_per_request=args.erp_seconds_per_request,
     )

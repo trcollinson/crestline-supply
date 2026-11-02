@@ -1,0 +1,15 @@
+[project]
+name = "crestline-machines"
+version = "0.1.0"
+description = "Crestline's machine gateways: the Sparkplug B schema and the replay publisher"
+requires-python = ">=3.12"
+dependencies = [
+    "certifi>=2026.7.22",
+    "paho-mqtt>=2.1",
+    # The runtime the generated sparkplug_b_pb2.py asks for (it checks at import).
+    "protobuf>=7.35.1,<8",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"

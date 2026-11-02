@@ -183,9 +183,23 @@ TYPE_SQL: dict[str, str] = {
 }
 
 
+# ERP fields that are timestamps. A field has one type in every entity it
+# appears in (a test checks), so the name alone says which clock it is on.
+TIMESTAMP_FIELDS = frozenset(
+    field
+    for fields in COLUMNS.values()
+    for field, kind in fields
+    if kind == "timestamp"
+)
+
+
 def column_name(field: str) -> str:
-    """The curated column for an ERP field: its name in lower case."""
-    return field.lower()
+    """The curated column for an ERP field: its name in lower case.
+
+    A timestamp column also says its clock, `lastmodified_utc`, because a
+    timestamp in Athena carries no time zone of its own.
+    """
+    return field.lower() + ("_utc" if field in TIMESTAMP_FIELDS else "")
 
 
 def merge_sql(

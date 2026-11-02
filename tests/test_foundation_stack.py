@@ -93,10 +93,12 @@ def test_cdk_destroy_empties_and_deletes_both_buckets(template):
     template.resource_count_is("Custom::S3AutoDeleteObjects", 2)
 
 
-def test_glue_database_is_crestline_raw(template):
-    template.has_resource_properties(
-        "AWS::Glue::Database", {"DatabaseInput": {"Name": "crestline_raw"}}
-    )
+def test_glue_databases_are_crestline_raw_and_crestline_fixtures(template):
+    template.resource_count_is("AWS::Glue::Database", 2)
+    for name in ("crestline_raw", "crestline_fixtures"):
+        template.has_resource_properties(
+            "AWS::Glue::Database", {"DatabaseInput": {"Name": name}}
+        )
 
 
 def test_workgroup_caps_every_query_and_keeps_results_in_the_results_bucket(
@@ -151,6 +153,7 @@ def test_outputs_name_the_buckets_database_and_workgroup(template):
         "RawBucketName",
         "AthenaResultsBucketName",
         "GlueDatabaseName",
+        "FixtureDatabaseName",
         "AthenaWorkGroupName",
     }
     assert named <= set(outputs)

@@ -182,8 +182,8 @@ def test_backfill_upload_twice_leaves_one_copy_of_each_file(tmp_path, monkeypatc
         planned = planned_uploads(out, date(2026, 8, 3))
         assert bucket_keys(s3) == sorted(planned)
 
-    files = len(planned)  # 11 ERP entities, 3 MES days, 2 brakes
-    assert files == 16
+    files = len(planned)  # 11 ERP entities, 3 MES days x 2 files, 5 machines
+    assert files == 22
     where = f"Uploaded to s3://{BUCKET}/ (ingest_date=2026-08-03):"
     assert printed == [
         f"{where} {files} new or changed, 0 unchanged, 0 deleted",

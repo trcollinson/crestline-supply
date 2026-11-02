@@ -164,11 +164,12 @@ class ErpIngestStack(cdk.Stack):
         topic.grant_publish(curator)
         self._let_curate(curator, raw_bucket, results_bucket, curated_bucket)
 
+        checker = self._checker(code, state, results_bucket, curated_bucket)
         run = sfn.StateMachine(
             self,
             "Run",
             definition_body=sfn.DefinitionBody.from_chainable(
-                self._workflow(extractor, curator)
+                self._workflow(extractor, curator, checker)
             ),
             state_machine_type=sfn.StateMachineType.STANDARD,
             timeout=cdk.Duration.minutes(30),
@@ -327,12 +328,73 @@ class ErpIngestStack(cdk.Stack):
             )
         )
 
-    def _workflow(
-        self, extractor: lambda_.IFunction, curator: lambda_.IFunction
-    ) -> sfn.IChainable:
-        """Every entity, a few at a time: extract, then curate.
+    def _checker(
+        self,
+        code: lambda_.Code,
+        state: dynamodb.ITable,
+        results_bucket: s3.IBucket,
+        curated_bucket: s3.IBucket,
+    ) -> lambda_.IFunction:
+        """The data-shape checks (pipelines/checks), the run's last step (M3 step 8)."""
+        checker = lambda_.Function(
+            self,
+            "Checker",
+            description="Check the curated ERP tables' shape after a run (Crestline Supply)",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            architecture=lambda_.Architecture.ARM_64,
+            handler="checks.aws.erp_handler",
+            code=code,
+            memory_size=256,
+            timeout=cdk.Duration.minutes(5),
+            environment={
+                "CRESTLINE_ATHENA_WORKGROUP": ATHENA_WORKGROUP,
+                "CRESTLINE_STATE_TABLE": state.table_name,
+            },
+            log_group=logs.LogGroup(
+                self,
+                "CheckerLogs",
+                retention=logs.RetentionDays.ONE_WEEK,
+                removal_policy=cdk.RemovalPolicy.DESTROY,
+            ),
+        )
+        state.grant_read_write_data(checker)  # the null-rate baselines
+        results_bucket.grant_read(checker)
+        results_bucket.grant_put(checker)
+        curated_bucket.grant_read(checker)
+        arn = f"arn:{self.partition}"
+        where = f"{self.region}:{self.account}"
+        checker.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "athena:StartQueryExecution",
+                    "athena:GetQueryExecution",
+                    "athena:GetQueryResults",
+                ],
+                resources=[f"{arn}:athena:{where}:workgroup/{ATHENA_WORKGROUP}"],
+            )
+        )
+        checker.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["glue:GetDatabase", "glue:GetTable"],
+                resources=[
+                    f"{arn}:glue:{where}:catalog",
+                    f"{arn}:glue:{where}:database/{CURATED_DATABASE}",
+                    f"{arn}:glue:{where}:table/{CURATED_DATABASE}/*",
+                ],
+            )
+        )
+        return checker
 
-        A run fails if any entity does, at either step.
+    def _workflow(
+        self,
+        extractor: lambda_.IFunction,
+        curator: lambda_.IFunction,
+        checker: lambda_.IFunction,
+    ) -> sfn.IChainable:
+        """Every entity, a few at a time: extract, then curate; then the checks.
+
+        A run fails if any entity does, at either step, or if a data-shape
+        check finds a breach once all are merged.
         """
         entities = sfn.Pass(
             self,
@@ -403,6 +465,14 @@ class ErpIngestStack(cdk.Stack):
                 ),
                 failed,
             )
-            .otherwise(sfn.Succeed(self, "Every entity extracted"))
+            .otherwise(
+                tasks.LambdaInvoke(
+                    self,
+                    "Check the data's shape",
+                    lambda_function=checker,
+                    payload_response_only=True,
+                    retry_on_service_exceptions=True,
+                ).next(sfn.Succeed(self, "Every entity extracted and checked"))
+            )
         )
         return entities.next(each).next(verdict)

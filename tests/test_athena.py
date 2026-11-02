@@ -40,16 +40,32 @@ def test_margin_gap_splits_into_its_views_and_the_answer():
     assert not any("--" in part for part in parts)
 
 
-def test_setup_files_hold_fourteen_tables_and_eight_views():
+def test_setup_files_hold_eighteen_tables_and_twelve_views():
     tables = statements("athena/tables.sql")
     for verb in ("drop table if exists", "create external table", "msck repair table"):
-        assert sum(part.startswith(verb) for part in tables) == 14, verb
-    assert len(tables) == 42
+        assert sum(part.startswith(verb) for part in tables) == 18, verb
+    assert len(tables) == 54
     assert all(
         part.startswith("create or replace view")
         for part in statements("athena/sources.sql")
     )
-    assert len(statements("athena/sources.sql")) == 8
+    # Five ERP, the MES, and six machine views (M3: the curated machine tables).
+    assert len(statements("athena/sources.sql")) == 12
+
+
+def test_setup_builds_the_machine_views_on_top_of_the_sources(monkeypatch):
+    # The machine curator's checks read machine_counts, and the margin query
+    # reads the brake strokes; a fresh account has them only if setup makes
+    # them (found in M3 step 10's fresh-clone run).
+    athena = Athena("crestline_raw", "crestline", "my-raw", client=None)
+    ran = []
+    monkeypatch.setattr(athena, "run_file", lambda path: ran.append(path) or ("", 0))
+    athena.setup(QUERIES)
+    assert [p.relative_to(QUERIES).as_posix() for p in ran] == [
+        "athena/tables.sql",
+        "athena/sources.sql",
+        "machines.sql",
+    ]
 
 
 def test_render_fills_in_the_bucket_and_refuses_a_missing_value():

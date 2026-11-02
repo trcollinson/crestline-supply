@@ -2,9 +2,12 @@
 
 Two steps, mirroring what `crestline query` does with DuckDB:
 
-- `setup()` creates the raw tables (queries/athena/tables.sql) and the source
-  views (queries/athena/sources.sql) in the Glue database. Run it after
-  deploying the stack, and again after uploading a new extract.
+- `setup()` creates the raw tables (queries/athena/tables.sql), the source
+  views (queries/athena/sources.sql), and the clean machine data on top of
+  them (queries/machines.sql, as `connect()` does for DuckDB) in the Glue
+  database. Run it after deploying the stacks, before the machine curator's
+  first hourly run (its checks read `machine_counts`), and again after
+  uploading a new extract.
 - `run_query(name)` runs queries/<name>.sql, the same file DuckDB runs, and
   returns the result of its last statement.
 
@@ -66,9 +69,10 @@ class Athena:
         )
 
     def setup(self, queries_dir: Path = QUERIES_DIR) -> int:
-        """Create the raw tables and source views; returns bytes scanned."""
+        """Create the raw tables, source views, and machine views; returns bytes scanned."""
         scanned = self.run_file(queries_dir / "athena" / "tables.sql")[1]
         scanned += self.run_file(queries_dir / "athena" / "sources.sql")[1]
+        scanned += self.run_file(queries_dir / "machines.sql")[1]
         return scanned
 
     def run_query(self, name: str, queries_dir: Path = QUERIES_DIR) -> QueryResult:

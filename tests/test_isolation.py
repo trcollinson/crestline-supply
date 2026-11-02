@@ -20,6 +20,9 @@ PLATFORM_MODULES = [
     "src/crestline/stack.py",
     "src/crestline/athena.py",
     "src/crestline/erp_secrets.py",
+    "src/crestline/machine_setup.py",
+    "src/crestline/replay_account.py",
+    "src/crestline/machine_loadtest.py",
 ]
 SQL_COMMENT = re.compile(r"--[^\n]*")
 

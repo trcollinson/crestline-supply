@@ -1,7 +1,7 @@
 import contextlib
 import io
 import re
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -92,7 +92,7 @@ def test_forgotten_scan_offs_are_cut_back(con):
     scans = con.sql(
         """
         select *,
-               lead(scan_on) over (partition by employee_id order by scan_on) as next_scan_on
+               lead(scan_on_utc) over (partition by employee_id order by scan_on_utc) as next_scan_on_utc
         from scans
         """
     ).pl()
@@ -104,11 +104,30 @@ def test_forgotten_scan_offs_are_cut_back(con):
         return utc.replace(tzinfo=UTC).astimezone(PLANT_TZ)
 
     for scan in scans.iter_rows(named=True):
-        scan_on, scan_off = local(scan["scan_on"]), local(scan["scan_off"])
+        scan_on, scan_off = local(scan["scan_on_utc"]), local(scan["scan_off_utc"])
         assert str(scan_off.time()) <= shift_end[scan["shift"]]
         assert scan_off.date() == scan_on.date() == scan["work_date"]
-        if scan["next_scan_on"] is not None:
-            assert scan["scan_off"] <= scan["next_scan_on"]
+        if scan["next_scan_on_utc"] is not None:
+            assert scan["scan_off_utc"] <= scan["next_scan_on_utc"]
+
+
+def test_every_timestamp_column_says_its_clock(con):
+    """Spec §10, M3: a timestamp has no zone in either engine, so its name says it."""
+    columns = con.sql(
+        """
+        select table_name, column_name, data_type
+        from information_schema.columns
+        """
+    ).fetchall()
+    looks_like_a_time = re.compile(r"(^ts$|_ts$|_at$|time)")
+    times = [
+        (table, column, kind)
+        for table, column, kind in columns
+        if kind.startswith("TIMESTAMP") or looks_like_a_time.search(column)
+    ]
+    assert len(times) > 10  # the check sees the views
+    unnamed = [t for t in times if not t[1].endswith(("_utc", "_local"))]
+    assert unnamed == []
 
 
 def test_work_windows_match_the_plant_schedule(con):
@@ -126,7 +145,7 @@ def test_work_windows_match_the_plant_schedule(con):
         expected.append((shift.name, cursor, minutes(shift.end)))
 
     windows = con.sql(
-        "select shift, start_time, end_time from plant_work_windows order by 1, 2"
+        "select shift, start_time_local, end_time_local from plant_work_windows order by 1, 2"
     ).fetchall()
     assert [
         (shift, minutes(time.fromisoformat(start)), minutes(time.fromisoformat(end)))
@@ -135,7 +154,7 @@ def test_work_windows_match_the_plant_schedule(con):
 
 
 def test_both_engines_define_the_same_sources():
-    """margin_gap.sql runs on either engine, so both must offer the same names."""
+    """The query files run on either engine, so both must offer the same names."""
 
     def views(path: Path) -> set[str]:
         sql = (REPO_ROOT / path).read_text(encoding="utf-8")
@@ -144,6 +163,85 @@ def test_both_engines_define_the_same_sources():
     duckdb_sources = views(Path("queries/sources.sql"))
     assert "mes_labor" in duckdb_sources
     assert views(Path("queries/athena/sources.sql")) == duckdb_sources
+
+
+def test_rebuilt_cycles_add_up_to_every_piece_each_machine_made(con, out):
+    """Every message once, counters unwrapped: the totals are exact."""
+    truth = (
+        pl.read_parquet(out / "truth" / "truth_cycles.parquet")
+        .group_by("machine_id")
+        .len()
+    )
+    rebuilt = con.sql(
+        "select machine_id, sum(cycles) as cycles from machine_cycles_by_day group by 1"
+    ).pl()
+    both = truth.join(rebuilt, on="machine_id")
+    assert set(both["machine_id"]) == {"LSR-01", "PB-01", "PB-02", "PEM-01", "PC-LINE"}
+    assert (both["len"] == both["cycles"]).all()
+
+
+def test_the_backfill_holds_rollovers_and_resets_and_both_are_told_apart(con):
+    counted_as = dict(
+        con.sql(
+            "select counted_as, count(*) from machine_counts where machine_id in ('PB-02', 'PEM-01') group by 1"
+        ).fetchall()
+    )
+    assert counted_as["rollover"] >= 1
+    assert counted_as["reset"] >= 1
+
+
+@pytest.fixture(scope="module")
+def downtime(con) -> pl.DataFrame:
+    with pytest.MonkeyPatch.context() as mp:
+        mp.chdir(REPO_ROOT)
+        query.run(con, "downtime")
+    return con.sql("select * from machine_downtime").pl()
+
+
+def test_downtime_is_only_ever_inside_working_windows(con, downtime):
+    # Every second of every stop is working time. (A stop can run from one
+    # window into the next: 1st shift ends at 14:30, when 2nd starts.)
+    windows = con.sql("select starts_at_utc, ends_at_utc from work_windows").fetchall()
+    for stop in downtime.iter_rows(named=True):
+        start, end = stop["started_at_utc"], stop["ended_at_utc"]
+        assert start < end
+        working = sum(
+            (
+                max(timedelta(0), min(end, w_end) - max(start, w_start))
+                for w_start, w_end in windows
+            ),
+            timedelta(0),
+        )
+        assert working == end - start
+
+
+def test_downtime_stops_never_overlap_on_one_machine(downtime):
+    for _, stops in downtime.sort("started_at_utc").group_by("machine_id"):
+        starts, ends = stops["started_at_utc"], stops["ended_at_utc"]
+        assert (starts[1:] >= ends[:-1]).all()
+
+
+def test_each_generation_finds_downtime_its_own_way(downtime):
+    found = {
+        (machine, how)
+        for machine, how in downtime.select("machine_id", "found_by").iter_rows()
+    }
+    assert {m for m, _ in found} == {"LSR-01", "PB-01", "PB-02", "PEM-01", "PC-LINE"}
+    # The laser and the powder line say when they stop; the legacy presses
+    # only stop counting.
+    assert {how for m, how in found if m in ("LSR-01", "PC-LINE")} == {"state"}
+    assert {how for m, how in found if m in ("PB-02", "PEM-01")} == {"stroke gap"}
+    assert "stroke gap" in {how for m, how in found if m == "PB-01"}
+
+
+def test_cli_prints_the_downtime(out, capsys):
+    with pytest.MonkeyPatch.context() as mp:
+        mp.chdir(REPO_ROOT)
+        main(["query", "downtime", "--out", str(out)])
+
+    printed = capsys.readouterr().out
+    assert "stroke gap" in printed
+    assert "PEM-01" in printed
 
 
 def test_cli_prints_the_margin_gap(out, capsys):

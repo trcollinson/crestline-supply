@@ -208,8 +208,26 @@ row format delimited fields terminated by ','
 location 's3://${raw_bucket}/source=mes/entity=labor/'
 tblproperties ('skip.header.line.count' = '1');
 
+-- The downtime log: the stops someone wrote down, times to the minute,
+-- the reason as they typed it (M3).
+drop table if exists raw_mes_downtime;
+create external table raw_mes_downtime (
+    record_id      bigint,
+    record_type    string,
+    work_center    string,
+    machine_id     string,
+    start_time     timestamp,
+    end_time       timestamp,
+    reason_text    string,
+    entered_by     string
+)
+partitioned by (ingest_date string)
+row format delimited fields terminated by ','
+location 's3://${raw_bucket}/source=mes/entity=downtime/'
+tblproperties ('skip.header.line.count' = '1');
 
--- Brake gateways: one MQTT message per line.
+
+-- Machine gateways: one MQTT message per line (M3: all four generations).
 
 -- PB-01's payload keys are controller register addresses (N7:12, B3:0/4)
 -- that can't be column names. The JSON reader can hand a nested object back
@@ -235,6 +253,34 @@ partitioned by (ingest_date string)
 row format serde 'org.openx.data.jsonserde.JsonSerDe'
 location 's3://${raw_bucket}/source=machines/entity=pb02/';
 
+-- The other three devices (M3) are read as text lines too, for the same
+-- reason as PB-01, and because a line GW01 corrupted must not fail the
+-- whole table. LSR-01's payload is base64 Sparkplug B; the IoT rule
+-- decodes it in AWS, and the views (M3 step 5) read the decoded fields.
+drop table if exists raw_lsr01;
+create external table raw_lsr01 (
+    message       string
+)
+partitioned by (ingest_date string)
+row format delimited fields terminated by '\001'
+location 's3://${raw_bucket}/source=machines/entity=lsr01/';
+
+drop table if exists raw_pem01;
+create external table raw_pem01 (
+    message       string
+)
+partitioned by (ingest_date string)
+row format delimited fields terminated by '\001'
+location 's3://${raw_bucket}/source=machines/entity=pem01/';
+
+drop table if exists raw_pcline;
+create external table raw_pcline (
+    message       string
+)
+partitioned by (ingest_date string)
+row format delimited fields terminated by '\001'
+location 's3://${raw_bucket}/source=machines/entity=pcline/';
+
 
 -- Register the partitions (extracts) already in the bucket.
 msck repair table raw_erp_work_centers;
@@ -249,5 +295,9 @@ msck repair table raw_erp_job_materials;
 msck repair table raw_erp_job_costs;
 msck repair table raw_erp_labor_details;
 msck repair table raw_mes_labor;
+msck repair table raw_mes_downtime;
 msck repair table raw_pb01;
 msck repair table raw_pb02;
+msck repair table raw_lsr01;
+msck repair table raw_pem01;
+msck repair table raw_pcline;

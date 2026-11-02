@@ -50,6 +50,30 @@ class MesMess(BaseModel):
     # (longer over a weekend). 0 means every scan is closed on time.
     forgot_scan_off_rate: float = Field(default=0.03, ge=0, le=1)
 
+    # --- The downtime file (M3): what gets written down, and how ---
+
+    # A stop shorter than this is never written down, so microstops never
+    # are. 0 means every stop is a candidate.
+    min_recorded_downtime_minutes: float = Field(default=5, ge=0)
+    # A stop at least this long is always written down: nobody forgets a
+    # two-hour maintenance stop.
+    always_recorded_downtime_minutes: float = Field(default=30, ge=0)
+    # Share of the stops between those two that nobody writes down, because
+    # the operator was busy fixing it. 0 means every candidate is logged.
+    downtime_unrecorded_rate: float = Field(default=0.4, ge=0, le=1)
+    # How the reason is written. "none": the canonical phrase for the reason.
+    # "high": the way people write it (jam, JAMMED, jam - see Ray, blank).
+    free_text_noise: Literal["none", "high"] = "high"
+
+    @model_validator(mode="after")
+    def _always_is_not_below_minimum(self) -> "MesMess":
+        if self.always_recorded_downtime_minutes < self.min_recorded_downtime_minutes:
+            raise ValueError(
+                "always_recorded_downtime_minutes must not be below "
+                "min_recorded_downtime_minutes"
+            )
+        return self
+
 
 class ErpMess(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -118,18 +142,63 @@ class ErpMess(BaseModel):
         return value
 
 
+class ClockDrift(BaseModel):
+    """How far each device or gateway clock wanders from true time (RMS seconds).
+
+    The keys are the clocks that stamp a payload: PB-01's own controller
+    (`ts`), LSR-01's (the Sparkplug timestamps), and gateway GW02's
+    (`gw_ts`, shared by PB-02 and PEM-01). GW03 keeps NTP time. 0 is exact.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    lsr_01: float = Field(default=5, ge=0, alias="LSR-01")
+    pb_01: float = Field(default=140, ge=0, alias="PB-01")
+    gw02: float = Field(default=20, ge=0, alias="GW02")
+
+    def seconds(self, clock: str) -> float:
+        return {"LSR-01": self.lsr_01, "PB-01": self.pb_01, "GW02": self.gw02}[clock]
+
+
 class MachinesMess(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Width of the legacy polled counters behind gateway GW02 (PB-02): a
-    # 16-bit counter rolls over from 65,535 to 0. None means it never wraps.
+    # Width of the legacy polled counters behind gateway GW02 (PB-02, PEM-01):
+    # a 16-bit counter rolls over from 65,535 to 0. None means it never wraps.
     counter_rollover_bits: int | None = Field(default=16, ge=1)
+    # Share of a legacy machine's working days with a power cycle, which
+    # resets its counter to 0: three in four at 1st-shift start, the rest at
+    # a break or meal. 0 means never.
+    counter_reset_rate: float = Field(default=0.1, ge=0, le=1)
+    # Typical size of each clock's offset from true time, slowly wandering.
+    clock_drift_seconds: ClockDrift = Field(default_factory=ClockDrift)
+    # Share of messages a gateway delivers twice (a QoS 1 redelivery): the
+    # same bytes again a moment later. 0 means never.
+    duplicate_rate: float = Field(default=0.005, ge=0, le=1)
+    # Network outages per gateway per week. What happens to the data depends
+    # on the gateway: GW01 and EDGE-LASER buffer and replay, GW02 loses it,
+    # GW03 replays it in order (spec §4.3). 0 means none.
+    outages_per_week: float = Field(default=2, ge=0)
+    # How long an outage lasts: uniform between the two, in minutes.
+    outage_minutes: tuple[float, float] = (2, 45)
+    # Share of GW01's messages that arrive as truncated JSON. 0 means never.
+    malformed_json_rate: float = Field(default=0.001, ge=0, le=1)
+
+    @field_validator("outage_minutes")
+    @classmethod
+    def _outage_range(cls, value: tuple[float, float]) -> tuple[float, float]:
+        low, high = value
+        if not 0 < low <= high:
+            raise ValueError("outage_minutes must be [low, high] with 0 < low <= high")
+        return value
 
 
 # Presets for the levels other than 2, whose values are the field defaults.
 # Level 1 halves every rate; level 3 doubles them, throttles harder (2 per
 # second) and expires tokens in half the time. The formats (string numbers,
-# /Date()/, rounding, the nightly batch) are the same at 1, 2, and 3.
+# /Date()/, rounding, the nightly batch, the downtime thresholds and free
+# text, how far a clock wanders, how long an outage lasts) are the same at
+# 1, 2, and 3.
 _FORMATS = {
     "numbers_as_strings": True,
     "legacy_date_format_entities": ["LaborDetails"],
@@ -137,9 +206,25 @@ _FORMATS = {
     "labor_rounding_hours": 0.1,
     "labor_post_time": time(22, 0),
 }
+_MES_FORMATS = {
+    "min_recorded_downtime_minutes": 5,
+    "always_recorded_downtime_minutes": 30,
+    "free_text_noise": "high",
+}
+_MACHINE_FORMATS = {
+    "counter_rollover_bits": 16,
+    "clock_drift_seconds": {"LSR-01": 5, "PB-01": 140, "GW02": 20},
+    "outage_minutes": (2, 45),
+}
 LEVELS: dict[int, dict[str, dict[str, Any]]] = {
     0: {
-        "mes": {"forgot_scan_off_rate": 0},
+        "mes": {
+            "forgot_scan_off_rate": 0,
+            "min_recorded_downtime_minutes": 0,
+            "always_recorded_downtime_minutes": 30,
+            "downtime_unrecorded_rate": 0,
+            "free_text_noise": "none",
+        },
         "erp": {
             "token_ttl_seconds": None,
             "throttle_rps": None,
@@ -153,10 +238,22 @@ LEVELS: dict[int, dict[str, dict[str, Any]]] = {
             "labor_rounding_hours": 0,
             "labor_post_time": None,
         },
-        "machines": {"counter_rollover_bits": None},
+        "machines": {
+            "counter_rollover_bits": None,
+            "counter_reset_rate": 0,
+            "clock_drift_seconds": {"LSR-01": 0, "PB-01": 0, "GW02": 0},
+            "duplicate_rate": 0,
+            "outages_per_week": 0,
+            "outage_minutes": (2, 45),
+            "malformed_json_rate": 0,
+        },
     },
     1: {
-        "mes": {"forgot_scan_off_rate": 0.015},
+        "mes": {
+            **_MES_FORMATS,
+            "forgot_scan_off_rate": 0.015,
+            "downtime_unrecorded_rate": 0.2,
+        },
         "erp": {
             **_FORMATS,
             "token_ttl_seconds": 3600,
@@ -166,10 +263,21 @@ LEVELS: dict[int, dict[str, dict[str, Any]]] = {
             "soft_delete_rate": 0.005,
             "job_split_rate": 0.01,
         },
+        "machines": {
+            **_MACHINE_FORMATS,
+            "counter_reset_rate": 0.05,
+            "duplicate_rate": 0.0025,
+            "outages_per_week": 1,
+            "malformed_json_rate": 0.0005,
+        },
     },
     2: {},
     3: {
-        "mes": {"forgot_scan_off_rate": 0.06},
+        "mes": {
+            **_MES_FORMATS,
+            "forgot_scan_off_rate": 0.06,
+            "downtime_unrecorded_rate": 0.8,
+        },
         "erp": {
             **_FORMATS,
             "token_ttl_seconds": 1800,
@@ -178,6 +286,13 @@ LEVELS: dict[int, dict[str, dict[str, Any]]] = {
             "nextlink_drift": True,
             "soft_delete_rate": 0.02,
             "job_split_rate": 0.04,
+        },
+        "machines": {
+            **_MACHINE_FORMATS,
+            "counter_reset_rate": 0.2,
+            "duplicate_rate": 0.01,
+            "outages_per_week": 4,
+            "malformed_json_rate": 0.002,
         },
     },
 }

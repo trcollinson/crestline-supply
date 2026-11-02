@@ -8,8 +8,9 @@
 --
 -- Reads only the sources, never the answer key. The same file runs in
 -- DuckDB (sources.sql) and Athena (athena/sources.sql), so it sticks to SQL
--- both engines read the same way. Every timestamp a view hands on is UTC
--- with no time zone attached: Athena views can't store a zoned timestamp.
+-- both engines read the same way. Timestamps carry no time zone (Athena
+-- views can't store a zoned one), so every timestamp column says its clock
+-- in its name: _local for plant time as the MES writes it, _utc for UTC.
 
 
 -- The plant's working windows (spec §2): each shift minus its two breaks
@@ -25,7 +26,7 @@ select * from (values
     ('2nd', '16:40:00', '18:30:00'),
     ('2nd', '19:00:00', '21:00:00'),
     ('2nd', '21:10:00', '23:00:00')
-) as w (shift, start_time, end_time);
+) as w (shift, start_time_local, end_time_local);
 
 
 -- The same windows on every day the MES recorded work, in plant local time
@@ -37,15 +38,15 @@ select * from (values
 -- (20:30 UTC), but Athena takes it as UTC and converts, six hours early.
 create or replace view work_windows as
 with work_days as (
-    select distinct cast(scan_on as date) as work_date
+    select distinct cast(scan_on_local as date) as work_date
     from mes_labor
 ),
 
 local_windows as (
     select d.work_date,
            w.shift,
-           cast(cast(d.work_date as varchar) || ' ' || w.start_time as timestamp) as starts_local,
-           cast(cast(d.work_date as varchar) || ' ' || w.end_time   as timestamp) as ends_local
+           cast(cast(d.work_date as varchar) || ' ' || w.start_time_local as timestamp) as starts_local,
+           cast(cast(d.work_date as varchar) || ' ' || w.end_time_local   as timestamp) as ends_local
     from work_days as d
     cross join plant_work_windows as w
 )
@@ -54,8 +55,8 @@ select work_date,
        shift,
        starts_local,
        ends_local,
-       cast(with_timezone(starts_local, 'America/Denver') at time zone 'UTC' as timestamp) as starts_at,
-       cast(with_timezone(ends_local,   'America/Denver') at time zone 'UTC' as timestamp) as ends_at
+       cast(with_timezone(starts_local, 'America/Denver') at time zone 'UTC' as timestamp) as starts_at_utc,
+       cast(with_timezone(ends_local,   'America/Denver') at time zone 'UTC' as timestamp) as ends_at_utc
 from local_windows;
 
 
@@ -83,21 +84,21 @@ fixed as (
         s.work_date,
         s.shift,
         l.qty_good + l.qty_scrap as pieces,
-        l.scan_on,
+        l.scan_on_local,
         -- (least() must not see a null: Athena would return null, DuckDB
         -- would skip it. The last scan of the window has no next scan-on.)
         least(
-            l.scan_off,
+            l.scan_off_local,
             s.ends_local,
-            coalesce(lead(l.scan_on) over (partition by l.employee_id order by l.scan_on),
-                     l.scan_off)
-        ) as scan_off,
-        l.scan_off > s.ends_local as was_left_open
+            coalesce(lead(l.scan_on_local) over (partition by l.employee_id order by l.scan_on_local),
+                     l.scan_off_local)
+        ) as scan_off_local,
+        l.scan_off_local > s.ends_local as was_left_open
     from mes_labor as l
     join shifts as s
-      on s.work_date = cast(l.scan_on as date)
-     and l.scan_on >= s.starts_local
-     and l.scan_on <  s.ends_local
+      on s.work_date = cast(l.scan_on_local as date)
+     and l.scan_on_local >= s.starts_local
+     and l.scan_on_local <  s.ends_local
 )
 
 select record_id,
@@ -108,8 +109,8 @@ select record_id,
        work_date,
        shift,
        pieces,
-       cast(with_timezone(scan_on,  'America/Denver') at time zone 'UTC' as timestamp) as scan_on,
-       cast(with_timezone(scan_off, 'America/Denver') at time zone 'UTC' as timestamp) as scan_off,
+       cast(with_timezone(scan_on_local,  'America/Denver') at time zone 'UTC' as timestamp) as scan_on_utc,
+       cast(with_timezone(scan_off_local, 'America/Denver') at time zone 'UTC' as timestamp) as scan_off_utc,
        was_left_open
 from fixed;
 
@@ -122,14 +123,14 @@ select
     s.job_num,
     s.op_seq,
     s.work_center,
-    greatest(s.scan_on, w.starts_at) as starts_at,
-    least(s.scan_off,   w.ends_at)   as ends_at
+    greatest(s.scan_on_utc, w.starts_at_utc) as starts_at_utc,
+    least(s.scan_off_utc,   w.ends_at_utc)   as ends_at_utc
 from scans as s
 join work_windows as w
-  on w.work_date = s.work_date
- and w.shift     = s.shift
- and s.scan_on   < w.ends_at
- and s.scan_off  > w.starts_at;
+  on w.work_date    = s.work_date
+ and w.shift        = s.shift
+ and s.scan_on_utc  < w.ends_at_utc
+ and s.scan_off_utc > w.starts_at_utc;
 
 
 -- 3. Which brake ran each brake operation?
@@ -141,27 +142,24 @@ join work_windows as w
 -- reported. The first stroke marks the end of setup.
 create or replace view brake_operations as
 with brake_strokes as (
-    -- PB-01 reports its stroke counter whenever it changes.
-    select 'PB-01' as brake,
-           ts as counted_at,
-           cyc_cnt - lag(cyc_cnt) over (order by ts) as strokes
-    from pb01_data
-    union all
-    -- PB-02's counter is 16 bits wide and rolls over at 65,535, so the
-    -- strokes since the last poll are the difference mod 65,536.
-    select 'PB-02',
-           gw_ts,
-           (cnt - lag(cnt) over (order by gw_ts) + 65536) % 65536
-    from pb02_counts
+    -- Each brake's strokes from the cleaned machine data (machines.sql):
+    -- every message once, at the time it really happened rather than by
+    -- PB-01's drifting clock, and PB-02's 16-bit counter unwrapped, with a
+    -- rollover told apart from a power cycle.
+    select machine_id as brake,
+           counted_at_utc,
+           cycles     as strokes
+    from machine_counts
+    where machine_id in ('PB-01', 'PB-02')
 ),
 
 operations as (
     select job_num,
            op_seq,
-           min(scan_on)           as started_at,
-           max(scan_off)          as ended_at,
-           sum(pieces)            as pieces,
-           min_by(shift, scan_on) as setup_shift
+           min(scan_on_utc)           as started_at_utc,
+           max(scan_off_utc)          as ended_at_utc,
+           sum(pieces)                as pieces,
+           min_by(shift, scan_on_utc) as setup_shift
     from scans
     where work_center = 'BRAKE'
     group by job_num, op_seq
@@ -175,12 +173,12 @@ strokes_per_brake as (
            o.op_seq,
            b.brake,
            sum(b.strokes) as strokes,
-           min(b.counted_at) filter (where b.strokes > 0) as first_stroke_at,
-           max(b.counted_at) filter (where b.strokes > 0) as last_stroke_at
+           min(b.counted_at_utc) filter (where b.strokes > 0) as first_stroke_at_utc,
+           max(b.counted_at_utc) filter (where b.strokes > 0) as last_stroke_at_utc
     from operations as o
     join brake_strokes as b
-      on b.counted_at >  o.started_at + interval '30' second
-     and b.counted_at <= o.ended_at   + interval '30' second
+      on b.counted_at_utc >  o.started_at_utc + interval '30' second
+     and b.counted_at_utc <= o.ended_at_utc   + interval '30' second
     group by o.job_num, o.op_seq, b.brake
 ),
 
@@ -188,13 +186,13 @@ ranked as (
     select o.*,
            s.brake,
            s.strokes,
-           s.first_stroke_at,
+           s.first_stroke_at_utc,
            row_number() over (
                partition by o.job_num, o.op_seq
                -- The closest count wins. On a tie, the brake whose last
                -- stroke came nearest the operator's final scan-off.
                order by abs(s.strokes - o.pieces),
-                        abs(date_diff('second', s.last_stroke_at, o.ended_at))
+                        abs(date_diff('second', s.last_stroke_at_utc, o.ended_at_utc))
            ) as rank
     from operations as o
     join strokes_per_brake as s
@@ -203,7 +201,7 @@ ranked as (
     where s.strokes > 0
 )
 
-select job_num, op_seq, brake, setup_shift, pieces, strokes, started_at, first_stroke_at
+select job_num, op_seq, brake, setup_shift, pieces, strokes, started_at_utc, first_stroke_at_utc
 from ranked
 where rank = 1;
 
@@ -218,7 +216,7 @@ where rank = 1;
 create or replace view job_margins as
 with rebuilt_conversion as (
     select g.job_num,
-           sum(date_diff('second', g.starts_at, g.ends_at) / 3600.0
+           sum(date_diff('second', g.starts_at_utc, g.ends_at_utc) / 3600.0
                * (w.LaborRate + w.BurdenRate)) as cost
     from work_segments as g
     join erp_work_centers as w on w.WorkCenter = g.work_center
@@ -229,7 +227,7 @@ brake_setups as (
     select b.job_num,
            b.brake,
            b.setup_shift,
-           sum(greatest(0, date_diff('second', g.starts_at, least(g.ends_at, b.first_stroke_at))))
+           sum(greatest(0, date_diff('second', g.starts_at_utc, least(g.ends_at_utc, b.first_stroke_at_utc))))
                / 3600.0 as setup_hours
     from brake_operations as b
     join work_segments as g

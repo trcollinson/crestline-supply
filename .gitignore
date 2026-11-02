@@ -13,3 +13,6 @@ infra/cdk.out/
 
 # Local secrets
 .env
+
+# Gateway certificates and private keys (crestline machines certs)
+.secrets/

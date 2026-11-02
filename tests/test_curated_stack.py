@@ -10,6 +10,7 @@ from aws_cdk import assertions
 from app import build_app
 from erp_extract.curated import COLUMNS, CURATED_DATABASE, TABLES, column_name
 from erp_extract.entities import ENTITIES
+from machine_curate import tables as machine_tables
 
 INFRA_DIR = Path(__file__).resolve().parent.parent / "infra"
 TAGS = {"project": "crestline", "layer": "curated", "milestone": "M2"}
@@ -39,7 +40,8 @@ def test_every_entity_is_an_iceberg_table_in_the_curated_database(template):
     for resource in template.find_resources("AWS::Glue::Table").values():
         assert resource["Properties"]["DatabaseName"] == CURATED_DATABASE
     tables = iceberg_tables(template)
-    assert set(tables) == set(TABLES.values())
+    # The ERP's entities, and a table per machine (M3).
+    assert set(tables) == set(TABLES.values()) | set(machine_tables.TABLES.values())
     for table in tables.values():
         # Format version 2: row-level deletes, which MERGE writes.
         assert (table["MetadataOperation"], table["Version"]) == ("CREATE", "2")
@@ -55,6 +57,16 @@ def test_columns_are_typed_from_the_schema_and_keys_are_required(template):
             for number, (field, kind) in enumerate(COLUMNS[entity], start=1)
         ]
         assert {f["Name"] for f in fields if f["Required"]} == keys, entity
+
+
+def test_every_timestamp_column_says_its_clock(template):
+    tables = iceberg_tables(template)
+    for table in tables.values():
+        for field in table["IcebergTableInput"]["Schema"]["Fields"]:
+            if field["Type"] == "timestamp":
+                assert field["Name"].endswith("_utc"), field["Name"]
+    jobs = tables[TABLES["Jobs"]]["IcebergTableInput"]["Schema"]["Fields"]
+    assert "lastmodified_utc" in {f["Name"] for f in jobs}
 
 
 def test_the_tables_live_in_a_private_bucket_that_goes_with_the_stack(template):
@@ -81,3 +93,13 @@ def test_the_template_names_no_account_or_region(template):
     text = json.dumps(template.to_json())
     assert not re.search(r"\b\d{12}\b", text)
     assert not re.search(r"\b(?:us|eu|ap|ca|sa)-[a-z]+-\d\b", text)
+
+
+def test_each_machine_table_is_keyed_by_its_landed_line(template):
+    tables = iceberg_tables(template)
+    for device, table_name in machine_tables.TABLES.items():
+        fields = tables[table_name]["IcebergTableInput"]["Schema"]["Fields"]
+        assert [(f["Name"], f["Type"]) for f in fields] == [
+            (name, kind) for name, kind, _ in machine_tables.COLUMNS[device]
+        ]
+        assert [f["Name"] for f in fields if f["Required"]] == ["message_id"]

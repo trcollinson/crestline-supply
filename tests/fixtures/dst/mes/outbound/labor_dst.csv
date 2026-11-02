@@ -1,0 +1,7 @@
+record_id,record_type,employee_id,employee_name,job_num,op_seq,work_center,scan_on,scan_off,qty_good,qty_scrap,notes
+9900001,N,EMP-010,Miguel Vasquez,J199001,30,BRAKE,2026-10-29 14:35:00,2026-10-29 16:10:00,40,1,
+9900002,N,EMP-012,Andre Pruitt,J199002,40,PEM,2026-10-29 21:40:00,2026-10-30 06:00:00,25,0,
+9900003,N,EMP-011,Tasha Bloom,J199003,30,BRAKE,2026-10-30 21:30:00,2026-11-02 06:00:00,60,2,
+9900004,N,EMP-003,Ray Ostrander,J199004,30,BRAKE,2026-11-01 01:15:00,2026-11-01 01:45:00,0,0,weekend callout
+9900005,N,EMP-004,Lila Sconce,J199004,30,BRAKE,2026-11-01 01:40:00,2026-11-01 02:20:00,0,0,weekend callout
+9900006,N,EMP-010,Miguel Vasquez,J199005,30,BRAKE,2027-03-12 22:00:00,2027-03-15 06:00:00,30,0,

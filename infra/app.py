@@ -15,6 +15,8 @@ from stacks.curated import CuratedStack
 from stacks.erp_api import ErpApiStack
 from stacks.erp_ingest import ErpIngestStack
 from stacks.foundation import FoundationStack
+from stacks.machine_ingest import MachineIngestStack
+from stacks.machine_loadtest import MachineLoadtestStack
 
 INFRA_DIR = Path(__file__).resolve().parent
 
@@ -72,6 +74,32 @@ def build_app(context: dict | None = None) -> cdk.App:
     )
     for key, value in tags.items():
         cdk.Tags.of(erp_ingest).add(key, value)
+
+    # The machines' gateways, through IoT Core into the raw bucket (M3).
+    tags = {"project": "crestline", "layer": "machine-ingest", "milestone": "M3"}
+    machine_ingest = MachineIngestStack(
+        app,
+        "CrestlineMachineIngest",
+        raw_bucket=foundation.raw_bucket,
+        results_bucket=foundation.results_bucket,
+        curated_bucket=curated.bucket,
+        alarm_email=app.node.try_get_context("machineIngestAlarmEmail"),
+        tags=tags,
+    )
+    for key, value in tags.items():
+        cdk.Tags.of(machine_ingest).add(key, value)
+
+    # The load test (M3 step 9), only when asked: -c machineLoadtest=true.
+    # `layer` isn't a stack tag here: CloudFormation would copy it onto every
+    # resource, and each mode's resources carry their own value of it.
+    if str(app.node.try_get_context("machineLoadtest")).lower() == "true":
+        stack_tags = {"project": "crestline", "milestone": "M3"}
+        loadtest = MachineLoadtestStack(
+            app, "CrestlineMachineLoadtest", tags=stack_tags
+        )
+        for key, value in stack_tags.items():
+            cdk.Tags.of(loadtest).add(key, value)
+        cdk.Tags.of(loadtest).add("layer", "machine-loadtest")
     return app
 
 

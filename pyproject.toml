@@ -26,6 +26,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "grpcio-tools>=1.85.1",
     "httpx2>=2.16.0",
     "moto[s3]>=5.2.3",
     "pytest>=9.1.1",
@@ -39,6 +40,7 @@ infra = [
 # lets the tests import them and `uv run` start them.
 interfaces = [
     "crestline-erp-api",
+    "crestline-machines",
 ]
 pipelines = [
     "crestline-pipelines",
@@ -49,15 +51,19 @@ pipelines = [
 default-groups = ["dev", "infra", "interfaces", "pipelines"]
 
 [tool.uv.workspace]
-members = ["interfaces/erp-api", "pipelines"]
+members = ["interfaces/erp-api", "interfaces/machines", "pipelines"]
 
 [tool.uv.sources]
 crestline-erp-api = { workspace = true }
+crestline-machines = { workspace = true }
 crestline-pipelines = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["infra", "eval"]
+# Tests marked athena run queries in AWS: `pytest -m athena` runs them.
+addopts = ["-m", "not athena"]
+markers = ["athena: runs on the real Athena in AWS (opt-in; needs the deployed stacks)"]
 filterwarnings = [
     # Mangum asks for an event loop when it starts; Lambda has one, a test doesn't.
     "ignore:There is no current event loop:DeprecationWarning:mangum",
@@ -67,4 +73,14 @@ filterwarnings = [
 target-version = "py312"
 # First-party code: the package, the CDK app (`app`, `stacks`), the eval, and
 # the interface services.
-src = [".", "src", "infra", "eval", "pipelines", "interfaces/erp-api/src"]
+src = [
+    ".",
+    "src",
+    "infra",
+    "eval",
+    "pipelines",
+    "interfaces/erp-api/src",
+    "interfaces/machines/src",
+]
+# Generated protobuf code is not ours to format.
+extend-exclude = ["*_pb2.py"]

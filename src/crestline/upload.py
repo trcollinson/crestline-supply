@@ -38,7 +38,7 @@ from crestline.stack import foundation_outputs
 # Each source's folder in a backfill's output, and the files in it that go up.
 SOURCES = {
     "erp": ("erp/export", "*.jsonl"),
-    "mes": ("mes/outbound", "labor_*.csv"),
+    "mes": ("mes/outbound", "*.csv"),  # labor_ and downtime_
     "machines": ("machines", "*.jsonl"),
 }
 

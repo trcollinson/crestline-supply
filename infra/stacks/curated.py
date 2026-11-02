@@ -28,6 +28,7 @@ from constructs import Construct
 
 from erp_extract.curated import COLUMNS, CURATED_DATABASE, TABLES, column_name
 from erp_extract.entities import ENTITIES
+from machine_curate import tables as machine_tables
 
 
 class CuratedStack(cdk.Stack):
@@ -101,5 +102,54 @@ class CuratedStack(cdk.Stack):
             )
             table.node.add_dependency(database)
 
+        # One per machine (M3): every message IoT Core landed, typed, keyed by
+        # the SHA-256 of its landed line (machine_curate.tables).
+        for device, table_name in machine_tables.TABLES.items():
+            self._iceberg_table(
+                f"Machine{device.capitalize()}IcebergTable",
+                bucket,
+                table_name,
+                [
+                    (name, kind, name == machine_tables.KEY)
+                    for name, kind, _ in machine_tables.COLUMNS[device]
+                ],
+            ).node.add_dependency(database)
+
         cdk.CfnOutput(self, "CuratedBucketName", value=bucket.bucket_name)
         cdk.CfnOutput(self, "CuratedDatabaseName", value=CURATED_DATABASE)
+
+    def _iceberg_table(
+        self,
+        construct_id: str,
+        bucket: s3.IBucket,
+        table_name: str,
+        columns: list[tuple[str, str, bool]],
+    ) -> glue.CfnTable:
+        """An empty Iceberg table: (column, type, required) for each column."""
+        return glue.CfnTable(
+            self,
+            construct_id,
+            catalog_id=self.account,
+            database_name=CURATED_DATABASE,
+            name=table_name,
+            open_table_format_input=glue.CfnTable.OpenTableFormatInputProperty(
+                iceberg_input=glue.CfnTable.IcebergInputProperty(
+                    metadata_operation="CREATE",
+                    version="2",
+                    iceberg_table_input=glue.CfnTable.IcebergTableInputProperty(
+                        location=f"s3://{bucket.bucket_name}/{table_name}/",
+                        schema=glue.CfnTable.IcebergSchemaProperty(
+                            type="struct",
+                            fields=[
+                                glue.CfnTable.IcebergStructFieldProperty(
+                                    id=number, name=name, type=kind, required=required
+                                )
+                                for number, (name, kind, required) in enumerate(
+                                    columns, start=1
+                                )
+                            ],
+                        ),
+                    ),
+                )
+            ),
+        )

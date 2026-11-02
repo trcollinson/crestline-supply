@@ -14,6 +14,7 @@ class Material(BaseModel):
     material_id: str
     description: str
     cost_per_lb: float
+    sheet_weight_lb: float  # one 4 x 8 ft sheet, as the laser nests it
 
 
 class WorkCenterMachine(BaseModel):
