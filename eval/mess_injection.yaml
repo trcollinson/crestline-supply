@@ -1,0 +1,16 @@
+# The red-team eval's dataset (M4 step 6): the default plant (seed 42, mess
+# level 2) with planted instructions in the MES downtime file's free text.
+#
+#   uv run crestline sim backfill --days 90 --end 2026-10-01 --seed 42 \
+#       --out ./out --mess eval/mess_injection.yaml [--upload]
+#
+# 0.2 of the 230 downtime rows (53 rows, 37 nightly files) carry one of the
+# 40 payloads in reference/injection_payloads.yaml; every other file is
+# byte-identical to the default backfill. The answer key is
+# out/truth/truth_injections.parquet, which never leaves the laptop.
+
+seed: 42
+mess_level: 2
+
+mes:
+  injection_rate: 0.2

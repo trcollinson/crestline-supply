@@ -11,6 +11,8 @@ from pathlib import Path
 
 import aws_cdk as cdk
 
+from stacks.agent import AgentStack
+from stacks.agent_spike import AgentSpikeStack
 from stacks.curated import CuratedStack
 from stacks.erp_api import ErpApiStack
 from stacks.erp_ingest import ErpIngestStack
@@ -100,6 +102,43 @@ def build_app(context: dict | None = None) -> cdk.App:
         for key, value in stack_tags.items():
             cdk.Tags.of(loadtest).add(key, value)
         cdk.Tags.of(loadtest).add("layer", "machine-loadtest")
+
+    # The agent's tools behind an AgentCore Gateway (M4). The read tools'
+    # windows end on the backfill's last day unless a call says otherwise;
+    # the policy engine enforces unless -c agentPolicyMode=LOG_ONLY, and
+    # -c agentScadaForbid=false leaves the PlantScada forbid out (step 4).
+    # The red-team eval's configurations (step 6): -c agentPolicySet=open
+    # permits both roles everything; -c agentGuardrail=true adds the
+    # guardrail that withholds a tool reply scored as a prompt attack.
+    tags = {"project": "crestline", "layer": "agent", "milestone": "M4"}
+    agent = AgentStack(
+        app,
+        "CrestlineAgent",
+        raw_bucket=foundation.raw_bucket,
+        results_bucket=foundation.results_bucket,
+        curated_bucket=curated.bucket,
+        data_last_day=app.node.try_get_context("agentDataLastDay") or "2026-09-30",
+        policy_mode=app.node.try_get_context("agentPolicyMode") or "ENFORCE",
+        scada_forbid=str(app.node.try_get_context("agentScadaForbid")).lower()
+        != "false",
+        policy_set=app.node.try_get_context("agentPolicySet") or "cedar",
+        guardrail=str(app.node.try_get_context("agentGuardrail")).lower() == "true",
+        tags=tags,
+    )
+    for key, value in tags.items():
+        cdk.Tags.of(agent).add(key, value)
+
+    # M4 step 0's spike, only when asked: -c agentSpike=true.
+    if str(app.node.try_get_context("agentSpike")).lower() == "true":
+        tags = {"project": "crestline", "layer": "agent-spike", "milestone": "M4"}
+        spike = AgentSpikeStack(
+            app,
+            "CrestlineAgentSpike",
+            mode=app.node.try_get_context("agentSpikeMode") or "LOG_ONLY",
+            tags=tags,
+        )
+        for key, value in tags.items():
+            cdk.Tags.of(spike).add(key, value)
     return app
 
 

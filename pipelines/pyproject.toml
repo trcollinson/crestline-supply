@@ -12,5 +12,5 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 # The packages sit directly in this folder (pipelines/erp_extract/, pipelines/machine_curate/).
-module-name = ["erp_extract", "machine_curate"]
+module-name = ["erp_extract", "machine_curate", "agent_tools"]
 module-root = ""

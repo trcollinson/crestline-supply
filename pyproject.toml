@@ -45,18 +45,22 @@ interfaces = [
 pipelines = [
     "crestline-pipelines",
 ]
+agent = [
+    "crestline-agent",
+]
 
 [tool.uv]
 # The CDK app in infra/ is part of the project, so its tests run with the rest.
-default-groups = ["dev", "infra", "interfaces", "pipelines"]
+default-groups = ["dev", "infra", "interfaces", "pipelines", "agent"]
 
 [tool.uv.workspace]
-members = ["interfaces/erp-api", "interfaces/machines", "pipelines"]
+members = ["interfaces/erp-api", "interfaces/machines", "pipelines", "agent"]
 
 [tool.uv.sources]
 crestline-erp-api = { workspace = true }
 crestline-machines = { workspace = true }
 crestline-pipelines = { workspace = true }
+crestline-agent = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,6 +83,7 @@ src = [
     "infra",
     "eval",
     "pipelines",
+    "agent",
     "interfaces/erp-api/src",
     "interfaces/machines/src",
 ]

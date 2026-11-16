@@ -20,6 +20,7 @@ changes.
 
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -28,12 +29,18 @@ import mess_rates
 from crestline.mess import MessConfig
 from crestline.sim import Scenarios, build_truth_tables, generate_jobs, simulate
 from crestline.sim.backfill import backfill_window, extraction_time
-from crestline.sim.systems import erp, machines, mes
+from crestline.sim.systems import erp, injection, machines, mes
 from crestline.sim.systems.mes import PLANT_TZ
 
 END = date(2026, 10, 1)
 SLICE_DAYS = 90
 LEVEL_2 = MessConfig()
+# Planted instructions are off at every level (an attack, not a plant mess),
+# so their check runs at a rate of its own.
+INJECTED = MessConfig(mes={"injection_rate": 0.2})
+PAYLOADS = (
+    Path(__file__).resolve().parent.parent / "reference" / "injection_payloads.yaml"
+)
 RATE_KNOBS = [
     "mes.forgot_scan_off_rate",
     "erp.soft_delete_rate",
@@ -66,7 +73,6 @@ def measure(reference_data) -> Callable[[MessConfig], dict[str, mess_rates.Rate]
         reference_data,
     )
     released_at = dict(truth["truth_jobs"].select("job_num", "released_at").iter_rows())
-    expected = mess_rates.configured(LEVEL_2)
     cutoff = datetime.combine(
         first_day + timedelta(days=SLICE_DAYS), datetime.min.time(), tzinfo=PLANT_TZ
     ).astimezone(UTC)
@@ -119,6 +125,16 @@ def measure(reference_data) -> Callable[[MessConfig], dict[str, mess_rates.Rate]
             ]
 
         stops = mes.downtime_records(truth, reference_data, mess_config.mes, seed=42)
+        planted = {}
+        if mess_config.mes.injection_rate > 0:
+            _, truth_injections = injection.plant(
+                stops,
+                injection.load_payloads(PAYLOADS),
+                mess_config.mes.injection_rate,
+                mes.first_names_by_work_center(reference_data),
+                seed=42,
+            )
+            planted = dict(truth_injections.select("record_id", "part").iter_rows())
         recorded = {
             (machine, start, end)
             for machine, start, end in stops.select(
@@ -143,6 +159,11 @@ def measure(reference_data) -> Callable[[MessConfig], dict[str, mess_rates.Rate]
             "erp.lastmodified_skips: LaborDetails.post": list(
                 mess_rates.stale_stamps(
                     versions("LaborDetails", ("LaborDtlSeq",)), updates_only=False
+                )
+            ),
+            "mes.injection_rate": list(
+                mess_rates.planted_instructions(
+                    stops.select("record_id", "end_time").rows(), planted
                 )
             ),
             "mes.downtime_unrecorded_rate": list(
@@ -199,8 +220,11 @@ def measure(reference_data) -> Callable[[MessConfig], dict[str, mess_rates.Rate]
         }
         return memo[key]
 
-    def count(mess_config: MessConfig) -> dict[str, mess_rates.Rate]:
+    def count(
+        mess_config: MessConfig, against: MessConfig = LEVEL_2
+    ) -> dict[str, mess_rates.Rate]:
         trials = plant_systems(mess_config) | machine_systems(mess_config)
+        expected = mess_rates.configured(against)
         return {
             knob: mess_rates.rates(knob, expected[knob], t)["all"]
             for knob, t in trials.items()
@@ -221,10 +245,25 @@ def knob_value(mess: MessConfig, knob: str) -> float:
 
 def test_every_mess_happens_at_its_configured_rate_at_level_2(measure):
     measured = measure(LEVEL_2)
-    assert set(measured) == set(RATE_KNOBS) | set(SWITCHES)
+    assert set(measured) == set(RATE_KNOBS) | set(SWITCHES) | {"mes.injection_rate"}
     for knob, rate in measured.items():
         assert rate.ok, (knob, rate.hits, rate.trials, rate.band)
         assert rate.trials > 250, knob
+
+
+def test_planted_instructions_happen_at_their_configured_rate(measure):
+    rate = measure(INJECTED, against=INJECTED)["mes.injection_rate"]
+    assert rate.ok, (rate.hits, rate.trials, rate.band)
+    assert rate.trials > 250
+
+
+def test_planted_instructions_switched_off_or_doubled_fail_their_check(measure):
+    off = measure(LEVEL_2, against=INJECTED)["mes.injection_rate"]
+    assert off.hits == 0 and not off.ok
+    doubled = measure(MessConfig(mes={"injection_rate": 0.4}), against=INJECTED)[
+        "mes.injection_rate"
+    ]
+    assert doubled.hits > doubled.band[1] and not doubled.ok
 
 
 @pytest.mark.parametrize("knob", RATE_KNOBS)

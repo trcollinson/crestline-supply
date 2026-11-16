@@ -1,0 +1,15 @@
+[project]
+name = "crestline-agent"
+version = "0.1.0"
+description = "Crestline's agent: an MCP client for the AgentCore Gateway and a Converse tool loop"
+requires-python = ">=3.12"
+# boto3 for SigV4 and Bedrock; the rest is the standard library.
+dependencies = ["boto3"]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "crestline_agent"
+module-root = ""

@@ -4,6 +4,7 @@ import base64
 import json
 from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
+from types import SimpleNamespace
 
 import pytest
 
@@ -253,3 +254,37 @@ def test_connections_are_sized_for_the_speed(machines_dir):
     assert publisher.connections_needed(
         machines_dir, START, end, [BY_NAME["pb01"]], 86_400 * 100
     ) == {"GW01": 3}
+
+
+def test_a_message_number_still_in_flight_is_skipped_not_fatal():
+    """paho wraps its message numbers at 65,535; after a drop, one still
+    waiting for its PUBACK can hold the next number (M4 step 3)."""
+    import paho.mqtt.client as mqtt
+
+    from crestline_machines.publisher import PahoClient
+
+    class Paho:
+        def __init__(self, refusals: int) -> None:
+            self.refusals = refusals
+            self.sent = 0
+
+        def publish(self, topic, payload, qos, properties):
+            if self.refusals:
+                self.refusals -= 1
+                return SimpleNamespace(rc=mqtt.MQTT_ERR_QUEUE_SIZE)
+            self.sent += 1
+            return SimpleNamespace(rc=mqtt.MQTT_ERR_SUCCESS)
+
+    client = object.__new__(PahoClient)
+    client._properties = lambda: SimpleNamespace()
+    client._no_connection = mqtt.MQTT_ERR_NO_CONN
+    client._number_taken = mqtt.MQTT_ERR_QUEUE_SIZE
+    client._pending = 0
+    client.renumbered = 0
+    client._client = Paho(refusals=2)
+    client.send("t", b"x", [])
+    assert (client._client.sent, client.renumbered, client._pending) == (1, 2, 1)
+
+    client._client = Paho(refusals=10_000)
+    with pytest.raises(ConnectionError, match="rc 15"):
+        client.send("t", b"x", [])

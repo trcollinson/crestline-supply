@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "crestline",
+    "crestline-agent",
     "crestline-erp-api",
     "crestline-machines",
     "crestline-pipelines",
@@ -418,6 +419,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+agent = [
+    { name = "crestline-agent" },
+]
 dev = [
     { name = "grpcio-tools" },
     { name = "httpx2" },
@@ -449,6 +453,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+agent = [{ name = "crestline-agent", editable = "agent" }]
 dev = [
     { name = "grpcio-tools", specifier = ">=1.85.1" },
     { name = "httpx2", specifier = ">=2.16.0" },
@@ -465,6 +470,17 @@ interfaces = [
     { name = "crestline-machines", editable = "interfaces/machines" },
 ]
 pipelines = [{ name = "crestline-pipelines", editable = "pipelines" }]
+
+[[package]]
+name = "crestline-agent"
+version = "0.1.0"
+source = { editable = "agent" }
+dependencies = [
+    { name = "boto3" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "boto3" }]
 
 [[package]]
 name = "crestline-erp-api"

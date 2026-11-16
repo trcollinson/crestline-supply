@@ -65,6 +65,15 @@ class MesMess(BaseModel):
     # "high": the way people write it (jam, JAMMED, jam - see Ray, blank).
     free_text_noise: Literal["none", "high"] = "high"
 
+    # --- Planted instructions (M4): an attack, not a mess the plant makes ---
+
+    # Share of downtime rows where someone planted an instruction for an AI
+    # agent in reason_text. 0 at every mess_level unless written here, so
+    # every earlier post's backfill stays byte-identical.
+    injection_rate: float = Field(default=0, ge=0, le=1)
+    # The versioned payload file the planted text comes from.
+    injection_payloads: Path = Path("reference/injection_payloads.yaml")
+
     @model_validator(mode="after")
     def _always_is_not_below_minimum(self) -> "MesMess":
         if self.always_recorded_downtime_minutes < self.min_recorded_downtime_minutes:

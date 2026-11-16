@@ -55,6 +55,24 @@ select record_id,
 from raw_mes_labor
 where ingest_date = (select max(ingest_date) from raw_mes_labor);
 
+-- MES: the nightly downtime files, the stops someone wrote down, read as
+-- real CSV (tables.sql). The CSV reader gives every column as text, so
+-- they are typed here; times are plant local, and given in UTC too. An
+-- empty reason is no reason (NULL), as DuckDB reads it.
+create or replace view mes_downtime as
+select cast(record_id as bigint)        as record_id,
+       record_type,
+       work_center,
+       machine_id,
+       cast(start_time as timestamp)    as start_time_local,
+       cast(end_time as timestamp)      as end_time_local,
+       nullif(reason_text, '')          as reason_text,
+       entered_by,
+       cast(with_timezone(cast(start_time as timestamp), 'America/Denver') at time zone 'UTC' as timestamp) as start_time_utc,
+       cast(with_timezone(cast(end_time as timestamp),   'America/Denver') at time zone 'UTC' as timestamp) as end_time_utc
+from raw_mes_downtime
+where ingest_date = (select max(ingest_date) from raw_mes_downtime);
+
 
 -- Machines: the curated tables (crestline_curated.machine_<device>), one
 -- typed row per message AWS IoT Core landed (M3). Their columns are already

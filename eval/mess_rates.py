@@ -32,6 +32,10 @@ Everything is counted from the interfaces, not from the simulator's draws:
 - **unrecorded downtime**: stops between the two thresholds that the MES
   downtime file does not hold, against all such stops. This one reads the
   answer key (`eval/` may): the file can't know what it didn't record.
+- **planted instructions** (M4): downtime rows given a payload, against
+  every row that could have been (the second half of a split went where its
+  first half sent it, not where a draw did). This one reads the answer key
+  too (`truth_injections`): nothing in a row marks it as planted.
 
 The ERP's store keeps every version of every row, so the stamps can be
 checked against when each change really happened.
@@ -175,6 +179,7 @@ def configured(mess: MessConfig) -> dict[str, float]:
         "machines.outages_per_week": machines.outages_per_week / HOURS_PER_WEEK,
         "machines.counter_reset_rate": machines.counter_reset_rate,
         "mes.downtime_unrecorded_rate": mess.mes.downtime_unrecorded_rate,
+        "mes.injection_rate": mess.mes.injection_rate,
     }
 
 
@@ -278,6 +283,18 @@ def unrecorded_downtime(
         yield month_of(ended_at), int(not recorded), 1
 
 
+def planted_instructions(
+    rows: Iterable[tuple[int, str]], parts: dict[int, int]
+) -> Trials:
+    """Downtime rows as (record_id, end_time as the file writes it), and the
+    payload part planted on each (`truth_injections`: 0 whole, 1 or 2 a half)."""
+    for record_id, end_time in rows:
+        part = parts.get(record_id)
+        if part == 2:
+            continue  # not a chance of its own
+        yield end_time[:7], int(part is not None), 1
+
+
 def downtime_candidates(
     machine_states: pl.DataFrame, mess: MessConfig, recorded: set[tuple[str, str, str]]
 ) -> list[tuple[datetime, bool]]:
@@ -364,10 +381,18 @@ def from_backfill(out: Path, mess: MessConfig) -> dict[str, dict[str, Rate]]:
     pcline = list(from_files(machine_files / "pcline.jsonl"))
     window = machine_window(pb02)
     recorded = set()
+    downtime_rows = []
     for path in sorted((out / "mes" / "outbound").glob("downtime_*.csv")):
         with path.open(newline="", encoding="utf-8") as file:
             for row in csv.DictReader(file):
                 recorded.add((row["machine_id"], row["start_time"], row["end_time"]))
+                downtime_rows.append((int(row["record_id"]), row["end_time"]))
+    injections = out / "truth" / "truth_injections.parquet"
+    planted = (
+        dict(pl.read_parquet(injections).select("record_id", "part").iter_rows())
+        if injections.exists()
+        else {}
+    )
     machine_states = pl.read_parquet(out / "truth" / "truth_machine_states.parquet")
 
     trials = {
@@ -400,6 +425,7 @@ def from_backfill(out: Path, mess: MessConfig) -> dict[str, dict[str, Rate]]:
         "mes.downtime_unrecorded_rate": unrecorded_downtime(
             downtime_candidates(machine_states, mess, recorded)
         ),
+        "mes.injection_rate": planted_instructions(downtime_rows, planted),
     }
     return {knob: rates(knob, expected[knob], t) for knob, t in trials.items()}
 

@@ -209,20 +209,29 @@ location 's3://${raw_bucket}/source=mes/entity=labor/'
 tblproperties ('skip.header.line.count' = '1');
 
 -- The downtime log: the stops someone wrote down, times to the minute,
--- the reason as they typed it (M3).
+-- the reason as they typed it (M3). Free text can hold commas and quotes,
+-- so this file is read as real CSV (M4): OpenCSVSerDe honours quoted
+-- fields and doubled quotes. It reads every column as text (it parses a
+-- timestamp only as epoch milliseconds), so the mes_downtime view types
+-- them. Its default escape character is a backslash, which would swallow
+-- one an operator typed; the file has no escape character, so it is set to
+-- NUL, which never appears. Like every Athena text reader, it starts a new
+-- row at every line break, even inside quotes, which is why the MES writes
+-- free text on one line (spec §4.2).
 drop table if exists raw_mes_downtime;
 create external table raw_mes_downtime (
-    record_id      bigint,
+    record_id      string,
     record_type    string,
     work_center    string,
     machine_id     string,
-    start_time     timestamp,
-    end_time       timestamp,
+    start_time     string,
+    end_time       string,
     reason_text    string,
     entered_by     string
 )
 partitioned by (ingest_date string)
-row format delimited fields terminated by ','
+row format serde 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+with serdeproperties ('separatorChar' = ',', 'quoteChar' = '"', 'escapeChar' = '\0')
 location 's3://${raw_bucket}/source=mes/entity=downtime/'
 tblproperties ('skip.header.line.count' = '1');
 

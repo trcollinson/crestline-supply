@@ -50,6 +50,7 @@ PLANT_TZ = ZoneInfo("America/Denver")
 MAX_RATE = 90.0  # messages a second per connection; IoT Core's limit is 100
 ACK_TIMEOUT = 30.0
 RECONNECT_TIMEOUT = 300.0  # how long a send waits for a dropped connection to return
+MID_RETRIES = 100  # message numbers to try past one still in flight
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +245,8 @@ class PahoClient:
 
         self._properties = lambda: Properties(PacketTypes.PUBLISH)
         self._no_connection = mqtt.MQTT_ERR_NO_CONN
+        self._number_taken = mqtt.MQTT_ERR_QUEUE_SIZE
+        self.renumbered = 0
         self._connected = threading.Event()
         self._disconnects: list[str] = []
         self._pending = 0
@@ -307,6 +310,16 @@ class PahoClient:
             # Dropped: wait for paho to reconnect, then send it again.
             if not self._connected.wait(RECONNECT_TIMEOUT):
                 raise ConnectionError(f"no connection for {RECONNECT_TIMEOUT:.0f} s")
+            info = self._client.publish(topic, payload, qos=1, properties=props)
+        for _ in range(MID_RETRIES):
+            # paho numbers QoS 1 messages 1 to 65,535 and wraps. After a drop,
+            # a message still waiting for its PUBACK can hold the number this
+            # one was given, and paho refuses it (MQTT_ERR_QUEUE_SIZE, found in
+            # M4 step 3's replay, after GW03 dropped five times). Publishing
+            # again takes the next number.
+            if info.rc != self._number_taken:
+                break
+            self.renumbered += 1
             info = self._client.publish(topic, payload, qos=1, properties=props)
         if info.rc != 0:
             raise ConnectionError(f"publish to {topic} failed locally: rc {info.rc}")

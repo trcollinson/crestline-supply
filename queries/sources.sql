@@ -61,6 +61,34 @@ from read_csv(
     }
 );
 
+-- MES: the nightly downtime files, the stops someone wrote down. Times are
+-- plant local, typed to the minute, and given in UTC too, by the same rule.
+-- reason_text is whatever the operator typed, so the file is read as real
+-- CSV: a quoted field may hold commas and doubled quotes, and a reader that
+-- split on every comma would shift every column after it. An empty reason
+-- is no reason (NULL).
+create or replace view mes_downtime as
+select *,
+       cast(with_timezone(start_time_local, 'America/Denver') at time zone 'UTC' as timestamp) as start_time_utc,
+       cast(with_timezone(end_time_local,   'America/Denver') at time zone 'UTC' as timestamp) as end_time_utc
+from read_csv(
+    'mes/outbound/downtime_*.csv',
+    header = true,
+    delim = ',',
+    quote = '"',
+    escape = '"',
+    columns = {
+        'record_id': 'BIGINT',
+        'record_type': 'VARCHAR',
+        'work_center': 'VARCHAR',
+        'machine_id': 'VARCHAR',
+        'start_time_local': 'TIMESTAMP',
+        'end_time_local': 'TIMESTAMP',
+        'reason_text': 'VARCHAR',
+        'entered_by': 'VARCHAR'
+    }
+);
+
 
 -- Machine gateways: one MQTT message per line. Timestamps are UTC, and come
 -- out as plain timestamps (the ISO 8601 `Z` is converted, then dropped).

@@ -21,6 +21,12 @@ between most of the time (`downtime_unrecorded_rate` is the share they
 skip). Times are typed to the minute, the reason is free text
 (`free_text_noise`: `jam`, `JAMMED`, `jam - see Ray`, blank), and
 `entered_by` is the operator at the machine.
+
+The files are CSV per RFC 4180: a field holding a comma or a quote is
+quoted, its quotes doubled. Free text goes out on one line: the export
+writes a line break someone typed as a space, as many plant exports do,
+because a reader that splits the file into lines first (Athena's CSV
+readers all do) would cut that row in two (M4 step 1).
 """
 
 from collections.abc import Mapping
@@ -357,11 +363,7 @@ def downtime_records(
     """
     stops = merge_stops(truth["truth_machine_states"])
     work_center = {wc.machine_id: wc.work_center for wc in reference.work_centers}
-    first_names = {}
-    for employee in reference.employees:
-        first_names.setdefault(employee.work_center, []).append(
-            employee.name.split()[0]
-        )
+    first_names = first_names_by_work_center(reference)
     logged = make_rng(seed, stream="mes_downtime")
     wording = make_rng(seed, stream="mes_downtime_text")
     keep: list[bool] = []
@@ -403,6 +405,14 @@ def downtime_records(
     return recorded.select(
         *DOWNTIME_FILE_COLUMNS, "started_at", "ended_at", "reason", "job_num", "op_seq"
     )
+
+
+def first_names_by_work_center(reference: ReferenceData) -> dict[str, list[str]]:
+    """The first names of each work center's crew, as people sign a note."""
+    names: dict[str, list[str]] = {}
+    for employee in reference.employees:
+        names.setdefault(employee.work_center, []).append(employee.name.split()[0])
+    return names
 
 
 def _reason_text(reason: str, names: list[str], mess: MesMess, rng) -> str | None:
@@ -481,9 +491,14 @@ def _write_nightly_files(
             day + timedelta(days=1), NIGHTLY_EXPORT_TIME, tzinfo=PLANT_TZ
         )
         if dropped_at <= extracted_at:
-            rows = local.filter(pl.col("closed_on") == day).select(columns)
+            rows = _one_line(local.filter(pl.col("closed_on") == day).select(columns))
             path = out_dir / f"{prefix}_{day:%Y%m%d}.csv"
-            rows.write_csv(path)
+            rows.write_csv(path, quote_style="necessary", line_terminator="\n")
             written[path] = rows.height
         day += timedelta(days=1)
     return written
+
+
+def _one_line(rows: pl.DataFrame) -> pl.DataFrame:
+    """Every line break in a text field written as one space."""
+    return rows.with_columns(pl.col(pl.String).str.replace_all(r"\r\n|\r|\n", " "))

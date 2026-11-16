@@ -40,7 +40,7 @@ def test_margin_gap_splits_into_its_views_and_the_answer():
     assert not any("--" in part for part in parts)
 
 
-def test_setup_files_hold_eighteen_tables_and_twelve_views():
+def test_setup_files_hold_eighteen_tables_and_thirteen_views():
     tables = statements("athena/tables.sql")
     for verb in ("drop table if exists", "create external table", "msck repair table"):
         assert sum(part.startswith(verb) for part in tables) == 18, verb
@@ -49,8 +49,9 @@ def test_setup_files_hold_eighteen_tables_and_twelve_views():
         part.startswith("create or replace view")
         for part in statements("athena/sources.sql")
     )
-    # Five ERP, the MES, and six machine views (M3: the curated machine tables).
-    assert len(statements("athena/sources.sql")) == 12
+    # Five ERP, two MES (labor, downtime), and six machine views (M3: the
+    # curated machine tables).
+    assert len(statements("athena/sources.sql")) == 13
 
 
 def test_setup_builds_the_machine_views_on_top_of_the_sources(monkeypatch):
@@ -59,12 +60,19 @@ def test_setup_builds_the_machine_views_on_top_of_the_sources(monkeypatch):
     # them (found in M3 step 10's fresh-clone run).
     athena = Athena("crestline_raw", "crestline", "my-raw", client=None)
     ran = []
-    monkeypatch.setattr(athena, "run_file", lambda path: ran.append(path) or ("", 0))
+    monkeypatch.setattr(
+        athena,
+        "run_file",
+        lambda path, views_only=False: ran.append((path, views_only)) or ("", 0),
+    )
     athena.setup(QUERIES)
-    assert [p.relative_to(QUERIES).as_posix() for p in ran] == [
-        "athena/tables.sql",
-        "athena/sources.sql",
-        "machines.sql",
+    assert [(p.relative_to(QUERIES).as_posix(), v) for p, v in ran] == [
+        ("athena/tables.sql", False),
+        ("athena/sources.sql", False),
+        ("machines.sql", False),
+        # The agent's tools read these views (M4), so setup makes them too.
+        ("margin_gap.sql", True),
+        ("downtime.sql", True),
     ]
 
 

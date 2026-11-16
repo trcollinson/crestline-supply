@@ -14,15 +14,17 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
-from crestline.mess import load_mess
-from crestline.reference import load_reference_data
+import polars as pl
+
+from crestline.mess import MesMess, load_mess
+from crestline.reference import ReferenceData, load_reference_data
 
 from .clock import PLANT_TZ
 from .jobs import generate_jobs
 from .plant import simulate
 from .records import JobStatus
 from .scenarios import load_scenarios
-from .systems import erp, machines, mes
+from .systems import erp, injection, machines, mes
 from .truth import build_truth_tables, write_truth
 
 EXTRACT_LOCAL_TIME = time(6, 0)
@@ -83,6 +85,11 @@ def run_backfill(
         scans, first_day, last_day, extracted_at, out_dir / "mes" / "outbound"
     )
     stops = mes.downtime_records(truth, reference, mess.mes, seed)
+    stops, planted = _plant_injections(stops, reference, mess.mes, seed)
+    injections_path = out_dir / "truth" / "truth_injections.parquet"
+    injections_path.unlink(missing_ok=True)  # an earlier run's, if it planted
+    if planted is not None:
+        written |= write_truth({"truth_injections": planted}, out_dir / "truth")
     written |= mes.write_downtime_files(
         stops, first_day, last_day, extracted_at, out_dir / "mes" / "outbound"
     )
@@ -105,6 +112,25 @@ def run_backfill(
         jobs=len(result.jobs),
         jobs_complete=sum(j.status == JobStatus.COMPLETE for j in result.jobs),
         written=written,
+    )
+
+
+def _plant_injections(
+    stops: pl.DataFrame, reference: ReferenceData, mes_mess: MesMess, seed: int
+) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+    """Planted instructions in the downtime file, if `mes.injection_rate` is on.
+
+    Off (the default at every level), nothing is drawn or written, so the
+    backfill is byte-identical to one from before the knob existed.
+    """
+    if mes_mess.injection_rate == 0:
+        return stops, None
+    return injection.plant(
+        stops,
+        injection.load_payloads(mes_mess.injection_payloads),
+        mes_mess.injection_rate,
+        mes.first_names_by_work_center(reference),
+        seed,
     )
 
 

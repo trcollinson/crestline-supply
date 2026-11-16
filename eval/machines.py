@@ -36,7 +36,6 @@ out/truth/.
 
 import argparse
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -156,7 +155,7 @@ def score(out_dir: Path, queries_dir: Path = query.QUERIES_DIR) -> Scores:
         "rebuilt": con.sql(
             "select machine_id, started_at_utc as started_at, ended_at_utc as ended_at from machine_downtime"
         ).pl(),
-        "mes": _mes_stops(out_dir),
+        "mes": _mes_stops(con),
     }
     # What the plant could know with both: the machines catch the short
     # stops, the operators the ones a machine can't name.
@@ -251,33 +250,18 @@ def _days(con: duckdb.DuckDBPyConnection, cycles: pl.DataFrame) -> pl.DataFrame:
     return days.with_columns(rebuilt_miss=why("rebuilt_ok"), naive_miss=why("naive_ok"))
 
 
-def _mes_stops(out_dir: Path) -> pl.DataFrame:
-    """The MES downtime file's stops on the five machines, in UTC."""
-    files = sorted((out_dir / "mes" / "outbound").glob("downtime_*.csv"))
-    frame = pl.concat(
-        [
-            pl.read_csv(f, infer_schema=False) for f in files
-        ]  # a quiet day's file is a header
-    ).filter(pl.col("machine_id").is_in(MACHINES))
+def _mes_stops(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
+    """The MES downtime file's stops on the five machines, in UTC.
 
-    def utc(text: str) -> datetime:
-        # zoneinfo reads an ambiguous local time as its earlier occurrence
-        # (fold=0), the plant's rule.
-        local = datetime.fromisoformat(text).replace(tzinfo=PLANT_TZ)
-        return local.astimezone(UTC).replace(tzinfo=None)
-
-    return pl.DataFrame(
-        {
-            "machine_id": frame["machine_id"],
-            "started_at": [utc(t) for t in frame["start_time"]],
-            "ended_at": [utc(t) for t in frame["end_time"]],
-        },
-        schema={
-            "machine_id": pl.String,
-            "started_at": pl.Datetime("us"),
-            "ended_at": pl.Datetime("us"),
-        },
-    )
+    Read through the `mes_downtime` source view, the way a pipeline reads
+    it; its UTC times follow the plant's rule for the repeated hour, which
+    tests/test_dst.py checks against zoneinfo.
+    """
+    machines = ", ".join(f"'{m}'" for m in MACHINES)
+    return con.sql(
+        "select machine_id, start_time_utc as started_at, end_time_utc as ended_at"
+        f" from mes_downtime where machine_id in ({machines}) order by record_id"
+    ).pl()
 
 
 BAND_SQL = """

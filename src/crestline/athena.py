@@ -69,10 +69,18 @@ class Athena:
         )
 
     def setup(self, queries_dir: Path = QUERIES_DIR) -> int:
-        """Create the raw tables, source views, and machine views; returns bytes scanned."""
+        """Create the raw tables and every view; returns bytes scanned.
+
+        The sources, the machine views, and the views the margin and
+        downtime questions build on: the agent's tools read those directly
+        (M4), so they exist without the questions being asked first. Only
+        the views: the questions' answers aren't run.
+        """
         scanned = self.run_file(queries_dir / "athena" / "tables.sql")[1]
         scanned += self.run_file(queries_dir / "athena" / "sources.sql")[1]
         scanned += self.run_file(queries_dir / "machines.sql")[1]
+        scanned += self.run_file(queries_dir / "margin_gap.sql", views_only=True)[1]
+        scanned += self.run_file(queries_dir / "downtime.sql", views_only=True)[1]
         return scanned
 
     def run_query(self, name: str, queries_dir: Path = QUERIES_DIR) -> QueryResult:
@@ -81,14 +89,17 @@ class Athena:
         last_query_id, scanned = self.run_file(path)
         return QueryResult(self.fetch(last_query_id), scanned)
 
-    def run_file(self, path: Path) -> tuple[str, int]:
-        """Run every statement in `path` in order.
+    def run_file(self, path: Path, views_only: bool = False) -> tuple[str, int]:
+        """Run every statement in `path` in order (with `views_only`, just the
+        `create ... view` ones).
 
         Returns the last statement's query ID and the bytes all of them scanned.
         """
         sql = render(path.read_text(encoding="utf-8"), raw_bucket=self.raw_bucket)
         query_id, scanned = "", 0
         for statement in split_statements(sql):
+            if views_only and not statement.startswith("create or replace view"):
+                continue
             query_id, bytes_scanned = self.execute(statement)
             scanned += bytes_scanned
         return query_id, scanned

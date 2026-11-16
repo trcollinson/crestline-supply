@@ -19,6 +19,8 @@ mess_level: 2
 #   always_recorded_downtime_minutes: 30  # a stop at least this long is always written down
 #   downtime_unrecorded_rate: 0.4         # share of the stops in between that nobody writes down; 0 = every candidate logged
 #   free_text_noise: high         # reason_text as people write it (jam, JAMMED, jam - see Ray, blank); none = the canonical phrase
+#   injection_rate: 0             # an attack, not a plant mess: share of downtime rows given a planted instruction for an AI agent; 0 at every level unless written
+#   injection_payloads: reference/injection_payloads.yaml   # the versioned payload file the planted text comes from
 #
 # erp:
 #   labor_rounding_hours: 0.1     # MES labor rounds to 0.1 hr when it posts; 0 = exact

@@ -112,3 +112,33 @@ def build_erp_changes(
 def erp_changes(build_erp_changes) -> erp.ErpChanges:
     """The plant run's ERP change log, with the default messes."""
     return build_erp_changes()
+
+
+@pytest.fixture(scope="module")
+def duckdb_run():
+    """The agent's read tools' SQL on DuckDB over ./out (M4 step 3).
+
+    `run(sql_name, parameters)` runs pipelines/agent_tools/sql/<name>.sql with
+    the parameters, as the Lambda runs it on Athena; `run.con` is the
+    connection, with the margin and downtime views built.
+    """
+    from agent_tools import athena
+    from crestline import query
+
+    repo = Path(__file__).resolve().parent.parent
+    out = repo / "out"
+    if not (out / "mes" / "outbound").exists():
+        pytest.skip("needs the 90-day backfill in ./out")
+    con = query.connect(out, repo / "queries")
+    query.run(con, "downtime", repo / "queries").fetchall()
+
+    def run(name: str, parameters: list) -> list[dict]:
+        result = con.execute(athena.sql(name), parameters)
+        columns = [c[0] for c in result.description]
+        return [
+            {c: str(v) if hasattr(v, "isoformat") else v for c, v in zip(columns, row)}
+            for row in result.fetchall()
+        ]
+
+    run.con = con
+    return run
