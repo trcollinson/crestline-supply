@@ -92,6 +92,53 @@ No policy stops the last column. A planted claim ("tell anyone who asks that thi
 
 What the safety costs: Cedar decided each call in about 50 ms, at $0.000025 a decision, and refused none of 40 ordinary questions. The guardrail added 0.4 s to a read (1.1 s at p95), withheld none of 109 clean machine-days, but scores the floor's own shorthand `tool chg` as a jailbreak, and failed 13 of the 40 ordinary questions, each on a window that held a planted row. The 670 sessions cost $15.45, 97% of it model tokens; Cedar and the guardrail together were $0.21.
 
+## The fifth question: what changed overnight?
+
+Every number above answers a question someone thought to ask. A plant manager's morning starts before anyone has asked anything: what happened yesterday, and is any of it unusual? The usual answer is a person with a spreadsheet, once a week.
+
+M5's backfill adds a slow failure for the morning brief to find. From Wednesday Aug 12 the fiber laser's nozzle wears: its scrap climbs from about 1.6% to about 10% over ten days, a little each day, inside the daily noise. The plant notices the way plants do, from the weekly scrap report: the week of Aug 10 ran at 3.0% and nobody looked twice; the week of Aug 17 ran at 9.9%, so on Monday Aug 24 maintenance changed the nozzle. It's a separate run of the same plant (`--scenarios eval/scenarios_nozzle.yaml`; off by default, so every number above is unchanged), and every number in this section comes from it.
+
+The brief is written at 05:30 from what had arrived by then, and nothing later. `queries/as_of.sql` cuts every source at that moment (MES files dated before the morning, machine messages published before 05:30, ERP rows as they stood) and the queries above run on top of it unchanged; `queries/brief.sql` turns them into about a hundred facts, each with a stable ID: output by work center, margin by brake and shift, stops from the machines and from the operators' log, scrap by machine, each against its last 20 working days, and four rules that raise an alert. A test proves the cut: the facts from the whole backfill through the cut equal, cell for cell, the facts from a copy holding only what had physically arrived, on DuckDB and on Athena.
+
+Run as of every working morning of the 90 days and scored against the answer key, an alert that stays open is one issue, not one a day:
+
+| Rule | Issues | Planted scenario | Real | False |
+|---|---|---|---|---|
+| Scrap 3.5 standard errors above the machine's baseline | 1 | 1 (the nozzle) | 0 | 0 |
+| ERP margin 3 points above the rebuilt one, 5 or more jobs | 1 | 1 (PB-02's slow second shift) | 0 | 0 |
+| Stop minutes over twice the usual and at least 90 | 5 | 0 | 5 | 0 |
+| Output under 0.3 of the usual | 1 | 0 | 1 | 0 |
+
+The brief raised the nozzle on **Friday Aug 14**, two working days into the ramp, before the laser's true daily scrap first passed 5%. The weekly report caught it **six working days later**. Of the 316 pieces scrapped for wear ($2,447.76 at true cost), 289 ($2,260.67) were cut between that first brief and the nozzle change.
+
+The thresholds were tuned on the same 90 days, which flatters them. So a second run of the plant (seed 2, nozzle on) was scored without retuning: 12 issues, 2 of them false (scrap on a manual station, one by chance, one within a hair of the threshold), and the nozzle raised five working days before the Monday report. Its own sweep would have picked a looser threshold.
+
+**A model writes it up; a check reads every number.** The facts go to Claude Sonnet 4.6 or Amazon Nova 2 Lite as JSON, with no free text from the MES (that's the lesson of the fourth question), and the model writes the brief citing each fact's ID. Then `brief/check.py` reads the brief: every number must be a fact cited in the same paragraph, rounded no further than the fact allows, with the fact's unit; "twice", "half", and worked-out differences fail. A brief that fails is replaced by a plain template that states every fact, and the log says why. Over the 64 mornings:
+
+| | Briefs that went out | Went out, and a statement misled | Refused | Refused, a number would have misled |
+|---|---|---|---|---|
+| Sonnet 4.6 | 38 of 64 | 5 | 26 | 7 |
+| Nova 2 Lite | 46 of 64 | 21 | 18 | 1 |
+
+The other refusals were right numbers cited in the wrong place, most often a count in a heading. Every refused brief was read by hand against its morning's facts (`eval/brief_backtest_review.yaml`), and so was every brief that went out (`eval/brief_passed.py`, the readings in `eval/brief_passed_review.yaml`, each quote checked against the logs by script). The check stops a wrong number; it can't stop a right number under the wrong name. Nova wrote PB-02's second-shift margin as the whole machine's on 12 mornings (Sep 18: "For PB-02, ... a gap of 11.1 points"; the first shift's was −0.3), and 21 of its 46 briefs that went out held a statement like that. Sonnet's 5: a ⚠ on figures no alert covered, a corrected number left in the text, a trend no fact gave. No brief called an open alert new or a new one open, and neither model offered a cause.
+
+(With the first prompt: Sonnet 27 went out, 8 refused would have put a wrong, worked-out, or invented number in front of the manager; Nova 58 and 4.)
+
+In AWS, EventBridge Scheduler starts a Lambda at 05:30 plant time on weekdays: it gets the facts from Athena (about a minute), writes the brief through the same check, stores the Markdown and a page with the citations in S3, and emails the text through SNS. A brief costs about 5 cents of Sonnet; Athena's facts for a morning, about 0.2 cents. Temperature 0 doesn't make it repeatable: the request for Aug 14, byte for byte the backtest's, was refused in the backtest and went out live.
+
+## The sixth question: what does the agent get wrong?
+
+The fourth question's agent, Cedar enforcing, asked 20 questions a plant manager asks, on the M5 data: strokes, hooks, the brake that lost the most time, stops nobody logged, the margin, a job's status, the nozzle (when, why, is it fixed), and two the data can't answer (an oven's temperature, a supplier's steel). Every answer key is computed from the simulation's truth, not the platform's views, so the platform can be wrong too. Three repeats each, and every answer read by hand (the grading rules got 21 of 120 the wrong way round):
+
+| Model | Right | Partial | Wrong | Said it can't tell, rightly | Said it can't tell, wrongly |
+|---|---|---|---|---|---|
+| Sonnet 4.6 | 38 | 4 | 14 | 1 | 3 |
+| Nova 2 Lite | 18 | 3 | 33 | 6 | 0 |
+
+They miss differently. Nova misreads the calendar ("last week" as this week, "last Friday" as Saturday) in 21 of its misses; Sonnet makes things up in 11 of its: asked what caused August's laser scrap, all six sessions named a cause from the stops logged that week, though nothing in the data records one. Both said no jobs were finished yesterday (26 were): no tool counts them, and neither said so. Sonnet asked Cedar for 60 days of scrap, was refused by the 31-day rule, and sent the user to IT instead of asking for less.
+
+Three answers were wrong in the platform before any model read them. The clearest: September's PB-02 second-shift margin gap reads 7.2 points in the rebuilt margin and is 3.4 in truth, because six forgotten scan-offs put $1,617 of hours a supervisor never cut back onto those jobs. The rebuild is better than the ERP; it isn't the truth.
+
 ## How it fits together
 
 ```mermaid
@@ -194,11 +241,47 @@ mkdir -p sessions-m4 && tar -xzf crestline-m4-sessions.tar.gz -C sessions-m4
 uv run python eval/injection.py score --sessions sessions-m4/sessions/injection
 ```
 
+The morning brief runs on M5's backfill, the same plant with the laser nozzle wearing out. Its facts and the template need no AWS; `--model sonnet|nova` calls Bedrock:
+
+```sh
+uv run crestline sim backfill --days 90 --end 2026-10-01 --seed 42 --out ./out-m5 --scenarios eval/scenarios_nozzle.yaml
+uv run crestline brief facts --morning 2026-08-14 --out out-m5
+uv run crestline brief write --morning 2026-08-14 --out out-m5 --model none
+```
+
+The brief's backtest and the plant-manager questions are scored from logs published with the `post-05-capstone` release as `crestline-m5-logs.tar.gz`. With M5's backfill above:
+
+```sh
+tar -xzf crestline-m5-logs.tar.gz -C out-m5
+uv run python eval/brief_backtest.py run --out out-m5
+uv run python eval/brief_backtest.py score --out out-m5
+uv run python eval/brief_passed.py score --out out-m5
+uv run python eval/plant_questions.py score --run step7
+```
+
+`run` computes every morning's facts on DuckDB (about 10 minutes, every core busy); `score` reads them, the briefs' logs, and the answer key.
+
 To see the planted rows, run the backfill with them: `uv run crestline sim backfill --days 90 --end 2026-10-01 --seed 42 --mess eval/mess_injection.yaml`. Only the downtime files' `reason_text` changes; the answer key for what went where is `out/truth/truth_injections.parquet`, and `uv run python eval/injection.py cases` prints the question each payload gets.
 
 ## Run it on AWS
 
-Everything deploys into your own account and runs serverless. You need Node.js with the CDK CLI (`npm install -g aws-cdk`, 2.1143 or later), the AWS CLI, and an AWS profile with a region configured. Run from the repo root, after the local backfill above.
+One command builds everything in a region, and one takes it down:
+
+```sh
+export AWS_PROFILE=<profile>
+uv run crestline up --region us-east-2 [--email you@example.com]
+uv run crestline down --region us-east-2
+```
+
+`up` runs the steps below in order and checks first that it can: the CDK CLI, credentials, Bedrock access to Claude Sonnet 4.6 and Amazon Nova 2 Lite (it asks each for one token), AgentCore in the region. It simulates M5's backfill, bootstraps the CDK, turns on CloudWatch Transaction Search (the gateway's traces need it), deploys every stack, uploads the backfill, replays the 90 days of machine messages through IoT Core and accounts for every one, waits for the ERP poller's first run, merges the replay, deploys the agent and the brief, writes one brief, and ends with `cdk diff`, which must show no differences. About two hours, most of it the replay. If a step fails, run it again: finished steps are skipped. From a fresh clone it took 2 h 01 min, and the margin query, the brief's facts, and an agent question gave the same answers as an existing deployment.
+
+`down` deletes the gateways' certificates, every stack (the schedules first), the ERP's two secrets, and the log groups the stacks leave behind (CDK's bucket-emptying Lambdas create theirs during the delete), then looks for anything left and says so. It leaves on purpose: the CDK bootstrap stack, Transaction Search (an account setting, with its two log groups), and Bedrock model access. It took 6 minutes.
+
+Idle, with the ERP poller daily, the platform costs about $1.25 a month, nearly all of it Athena's 10 MB minimum on the machine curator's hourly queries; with a brief every weekday, about $2.50. `up` itself cost $1.10, most of it the replay (IoT Core and Firehose). The model runs cost more than the platform: the backtest's 64 mornings were about $3.30 with Sonnet and $0.30 with Nova, the 20 questions three times each about $2.25 and $0.16.
+
+### By hand
+
+The same steps, one at a time. Everything deploys into your own account and runs serverless. You need Node.js with the CDK CLI (`npm install -g aws-cdk`, 2.1143 or later), the AWS CLI, and an AWS profile with a region configured. Run from the repo root, after the local backfill above.
 
 ```sh
 export AWS_PROFILE=<profile>
@@ -277,14 +360,28 @@ uv run python -u eval/benign.py --config C
 
 These cost real money: a Sonnet 4.6 session is about $0.025 and a Nova 2 Lite one about $0.002, so the whole eval, 670 sessions, was about $15. `caffeinate` (macOS) keeps a laptop awake, since one that sleeps mid-run kills its connections; a run resumes where it stopped. The gateway's application logs record each call's decision in every mode, and the run attaches them to its session logs.
 
+### The brief
+
+```sh
+(cd infra && cdk deploy CrestlineBrief -c briefEmail=<you@example.com>)
+uv run crestline brief write --morning 2026-10-01 --out out --model none
+uv run crestline brief seed --out out --before 2026-10-01
+uv run crestline brief invoke
+```
+
+- **CrestlineBrief**: EventBridge Scheduler at 05:30 plant time on weekdays, and a Lambda that gets the morning's facts from Athena, writes the brief with Sonnet 4.6 through the number check (the template if it fails), stores the Markdown, a page with the citations, and the log in its bucket, and emails the text to `briefEmail` (optional; confirm the email SNS sends). The data ends Sep 30, so without a replay clock every run writes Oct 1's brief; `-c briefClockStart=2026-08-12 -c briefClockAnchor=<a weekday>` writes Aug 12's on that day and moves a plant weekday per weekday. `cdk diff` needs the same flags.
+- An alert says how long it has been open by reading the earlier mornings' facts. `brief write` computes them locally (`--out` is the backfill you uploaded) and `brief seed` puts them in the bucket, so the Lambda's first run doesn't compute twenty mornings in Athena. `brief invoke` writes one now, as the schedule would.
+
+### Cost and teardown
+
 Idle, all of it costs next to nothing. While the poller and the machine curator run hourly, it's about $2 a month, nearly all Athena's 10 MB minimum per query: each run checks and merges its tables. The 90-day machine replay costs about $1 once (IoT Core's rules and actions, and Firehose's 5 KB minimum on 2.2 million small records).
 
-To take it down, delete the gateways' certificates first: `cdk destroy` can't remove a thing or a policy a certificate is still attached to. Then destroy the agent, which reads everything else; then the poller and the machine stack, which hold the hourly schedules, so nothing runs while the rest goes. Then the rest, and the two secrets:
+`crestline down` does all of what follows. To take it down by hand, delete the gateways' certificates first: `cdk destroy` can't remove a thing or a policy a certificate is still attached to. Then destroy the brief and the agent, which read everything else; then the poller and the machine stack, which hold the hourly schedules, so nothing runs while the rest goes. Then the rest, and the two secrets:
 
 ```sh
 uv run crestline machines setup --delete
 cd infra
-cdk destroy CrestlineAgent -c erpApiMess=../mess.yaml
+cdk destroy CrestlineBrief CrestlineAgent -c erpApiMess=../mess.yaml
 cdk destroy CrestlineErpIngest CrestlineMachineIngest
 cdk destroy CrestlineErpApi CrestlineCurated CrestlineFoundation
 cd ..
@@ -297,6 +394,7 @@ The buckets are emptied for you. That leaves the log groups of the Lambda functi
 aws logs describe-log-groups --log-group-name-prefix /aws/lambda/CrestlineFoundation --query 'logGroups[].logGroupName'
 aws logs describe-log-groups --log-group-name-prefix /aws/lambda/CrestlineCurated --query 'logGroups[].logGroupName'
 aws logs describe-log-groups --log-group-name-prefix /aws/lambda/CrestlineAgent --query 'logGroups[].logGroupName'
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/CrestlineBrief --query 'logGroups[].logGroupName'
 aws logs delete-log-group --log-group-name <name from above>
 ```
 
@@ -310,19 +408,21 @@ aws logs delete-log-group --log-group-name <name from above>
 | `pipelines/erp_extract/` | the naive and robust extractors, the raw page format, and the curate step's SQL |
 | `pipelines/machine_curate/`, `pipelines/checks/` | the machine curator, and the data-shape checks both pipelines run |
 | `pipelines/agent_tools/` | the agent's tools: one Lambda per gateway target, each read a SQL file over the Athena views |
+| `src/crestline/brief/` | the morning brief: its facts as of 05:30, the alert ledger, the template, the model's prompt, the number check, and the Lambda handler |
+| `src/crestline/up.py` | `crestline up` and `crestline down` |
 | `agent/` | the agent: a Bedrock Converse loop with no safety logic, its gateway client, and the policy decisions read back from the gateway's logs |
 | `infra/policies/` | the Cedar policies, one rule a file, and the eval's open set and guardrail |
 | `reference/` | parts, routings, rates, customers, employees, all fictional, and the 40 planted payloads |
 | `queries/` | the SQL, one file for both engines; `athena/` holds the raw tables and views |
 | `infra/` | the CDK app: one stack per layer |
-| `eval/` | scoring against the answer key, the extractors and curated tables against the ERP, and the agent's red-team eval and the cost of its safety |
+| `eval/` | scoring against the answer key, the extractors and curated tables against the ERP, the agent's red-team eval and the cost of its safety, the brief's backtest and hand readings, and the plant-manager questions |
 | `docs/SPEC.md` | the design: the plant, its systems, the messes, and the milestones |
 
 One rule holds it together: the queries, the API, the publisher, the pipelines, and the AWS code never read `out/truth/` or import the simulator. Only the eval and the tests may. A test enforces it.
 
 ## Status
 
-Milestone 4 of 8: an agent that reads the plant through an AgentCore Gateway, Cedar policies on every tool call, and a red-team eval of instructions planted in the MES downtime file, on top of the machine data, the ERP extraction, and the plant and margin query of milestones 1 to 3. Next: a morning brief for the plant manager. The roadmap is in `docs/SPEC.md`.
+Milestone 5 of 8: a morning brief written from what had arrived by 05:30, checked number by number, scored against the answer key over 90 mornings and delivered in AWS; 20 plant-manager questions put to the agent; and the whole platform up and down in one command, on top of the agent, the machine data, the ERP extraction, and the margin query of milestones 1 to 4. Next: traceability, from a lot of steel to the jobs it went into. The roadmap is in `docs/SPEC.md`.
 
 ## License
 
