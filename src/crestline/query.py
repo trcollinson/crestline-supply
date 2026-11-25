@@ -23,21 +23,36 @@ from crestline_machines.iot_rule import write_rule_records
 QUERIES_DIR = Path("queries")
 
 # Query files that build on another's views, and the files to run first.
-PREREQUISITES = {"downtime": ("margin_gap",)}
+PREREQUISITES = {"downtime": ("margin_gap",), "scrap": ("margin_gap",)}
 
 
 def connect(
     out_dir: Path, queries_dir: Path = QUERIES_DIR
 ) -> duckdb.DuckDBPyConnection:
     """A DuckDB connection with the sources and clean machine data over `out_dir`."""
+    con = connect_sources(out_dir, queries_dir)
+    con.execute((queries_dir / "machines.sql").read_text(encoding="utf-8"))
+    return con
+
+
+def connect_sources(
+    out_dir: Path, queries_dir: Path = QUERIES_DIR, schema: str = "main"
+) -> duckdb.DuckDBPyConnection:
+    """A DuckDB connection with just the sources over `out_dir`, in `schema`.
+
+    The morning brief keeps them in a schema of their own and cuts them at a
+    morning under the same names (`crestline.brief.facts`).
+    """
     laser = out_dir / "machines" / "lsr01.jsonl"
     if laser.exists():
         write_rule_records(laser, out_dir / "decoded" / "lsr01.jsonl")
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")  # display only; the SQL is explicit
     con.execute("SET file_search_path = ?", [str(out_dir.resolve())])
+    if schema != "main":
+        con.execute(f"CREATE SCHEMA {schema}")
+        con.execute(f"SET schema = '{schema}'")
     con.execute((queries_dir / "sources.sql").read_text(encoding="utf-8"))
-    con.execute((queries_dir / "machines.sql").read_text(encoding="utf-8"))
     return con
 
 

@@ -77,6 +77,8 @@ def run_backfill(
     result = simulate(reference, jobs, first_day, last_day, seed, scenarios=scenarios)
     truth = build_truth_tables(result, reference)
 
+    # An earlier run's scenario events, if that run had a scenario in time on.
+    (out_dir / "truth" / "truth_events.parquet").unlink(missing_ok=True)
     written = write_truth(truth, out_dir / "truth")
     _remove_previous_system_outputs(out_dir)
 

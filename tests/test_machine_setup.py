@@ -79,3 +79,14 @@ def test_the_schema_goes_up_and_comes_down(tmp_path):
         assert body == DESCRIPTOR_FILE.read_bytes()
         machine_setup.delete_schema("schema", s3)
         assert s3.list_objects_v2(Bucket="schema").get("KeyCount") == 0
+
+
+def test_each_region_keeps_its_own_keys(monkeypatch):
+    """A certificate belongs to one region's IoT Core (M5 builds a second)."""
+    assert (
+        machine_setup.certs_dir("us-east-1").as_posix() == ".secrets/machines/us-east-1"
+    )
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
+    monkeypatch.delenv("AWS_REGION", raising=False)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    assert machine_setup.certs_dir().name == "us-west-2"

@@ -42,14 +42,20 @@ def scrub(text: str, account: str) -> str:
     return GATEWAY_ID.sub(r"\1xxxxxxxxxx", text)
 
 
-def pack(account: str) -> tuple[int, int]:
+def pack(
+    account: str,
+    paths: list[Path] | None = None,
+    root: Path = AGENT,
+    target: Path = TARGET,
+) -> tuple[int, int]:
+    """Write `paths` (M4's logs by default) to `target`, named from `root`, scrubbed."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
-        for path in files():
+        for path in files() if paths is None else paths:
             data = scrub(path.read_text(), account).encode()
             if account.encode() in data:
                 raise SystemExit(f"the account ID survived scrubbing in {path}")
-            info = tarfile.TarInfo(str(path.relative_to(AGENT)))
+            info = tarfile.TarInfo(str(path.relative_to(root)))
             info.size, info.mtime = len(data), int(path.stat().st_mtime)
             tar.addfile(info, io.BytesIO(data))
     with tarfile.open(fileobj=io.BytesIO(buffer.getvalue())) as tar:
@@ -57,8 +63,8 @@ def pack(account: str) -> tuple[int, int]:
             if account.encode() in tar.extractfile(member).read():
                 raise SystemExit(f"the account ID is in {member.name}")
         count = len(tar.getmembers())
-    TARGET.parent.mkdir(parents=True, exist_ok=True)
-    TARGET.write_bytes(buffer.getvalue())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(buffer.getvalue())
     return count, len(buffer.getvalue())
 
 

@@ -49,9 +49,9 @@ def test_setup_files_hold_eighteen_tables_and_thirteen_views():
         part.startswith("create or replace view")
         for part in statements("athena/sources.sql")
     )
-    # Five ERP, two MES (labor, downtime), and six machine views (M3: the
+    # Six ERP, two MES (labor, downtime), and six machine views (M3: the
     # curated machine tables).
-    assert len(statements("athena/sources.sql")) == 13
+    assert len(statements("athena/sources.sql")) == 14
 
 
 def test_setup_builds_the_machine_views_on_top_of_the_sources(monkeypatch):
@@ -73,6 +73,7 @@ def test_setup_builds_the_machine_views_on_top_of_the_sources(monkeypatch):
         # The agent's tools read these views (M4), so setup makes them too.
         ("margin_gap.sql", True),
         ("downtime.sql", True),
+        ("scrap.sql", True),  # and M5's scrap_by_day
     ]
 
 

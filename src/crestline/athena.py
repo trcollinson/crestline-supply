@@ -58,6 +58,10 @@ class Athena:
     workgroup: str
     raw_bucket: str
     client: object = field(default_factory=lambda: boto3.client("athena"))
+    # The morning brief's database (M5): the sources as of a morning, and
+    # every view on top of them (crestline.brief). None on a stack from
+    # before it.
+    brief_database: str | None = None
 
     @classmethod
     def from_stack(cls, cloudformation=None) -> "Athena":
@@ -66,13 +70,14 @@ class Athena:
             database=outputs["GlueDatabaseName"],
             workgroup=outputs["AthenaWorkGroupName"],
             raw_bucket=outputs["RawBucketName"],
+            brief_database=outputs.get("BriefDatabaseName"),
         )
 
     def setup(self, queries_dir: Path = QUERIES_DIR) -> int:
         """Create the raw tables and every view; returns bytes scanned.
 
-        The sources, the machine views, and the views the margin and
-        downtime questions build on: the agent's tools read those directly
+        The sources, the machine views, and the views the margin, downtime,
+        and scrap questions build on: the agent's tools read those directly
         (M4), so they exist without the questions being asked first. Only
         the views: the questions' answers aren't run.
         """
@@ -81,6 +86,7 @@ class Athena:
         scanned += self.run_file(queries_dir / "machines.sql")[1]
         scanned += self.run_file(queries_dir / "margin_gap.sql", views_only=True)[1]
         scanned += self.run_file(queries_dir / "downtime.sql", views_only=True)[1]
+        scanned += self.run_file(queries_dir / "scrap.sql", views_only=True)[1]
         return scanned
 
     def run_query(self, name: str, queries_dir: Path = QUERIES_DIR) -> QueryResult:
@@ -89,26 +95,39 @@ class Athena:
         last_query_id, scanned = self.run_file(path)
         return QueryResult(self.fetch(last_query_id), scanned)
 
-    def run_file(self, path: Path, views_only: bool = False) -> tuple[str, int]:
+    def run_file(
+        self,
+        path: Path,
+        views_only: bool = False,
+        database: str | None = None,
+        **values: str,
+    ) -> tuple[str, int]:
         """Run every statement in `path` in order (with `views_only`, just the
-        `create ... view` ones).
+        `create ... view` ones), in `database` (the stack's, if not given),
+        with any ${name} placeholders filled from `values`.
 
         Returns the last statement's query ID and the bytes all of them scanned.
         """
-        sql = render(path.read_text(encoding="utf-8"), raw_bucket=self.raw_bucket)
+        sql = render(
+            path.read_text(encoding="utf-8"), raw_bucket=self.raw_bucket, **values
+        )
         query_id, scanned = "", 0
         for statement in split_statements(sql):
             if views_only and not statement.startswith("create or replace view"):
                 continue
-            query_id, bytes_scanned = self.execute(statement)
+            query_id, bytes_scanned = self.execute(statement, database)
             scanned += bytes_scanned
         return query_id, scanned
 
-    def execute(self, statement: str) -> tuple[str, int]:
-        """Run one statement and wait for it; returns its ID and bytes scanned."""
+    def execute(self, statement: str, database: str | None = None) -> tuple[str, int]:
+        """Run one statement and wait for it; returns its ID and bytes scanned.
+
+        Unqualified names resolve in `database` (the stack's, if not given),
+        and so do a view's when it is created there.
+        """
         query_id = self.client.start_query_execution(
             QueryString=statement,
-            QueryExecutionContext={"Database": self.database},
+            QueryExecutionContext={"Database": database or self.database},
             WorkGroup=self.workgroup,
         )["QueryExecutionId"]
         while True:

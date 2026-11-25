@@ -1,0 +1,198 @@
+# Twenty questions a plant manager asks (M5 step 7).
+#
+# Asked of M4's agent through the gateway, configuration C (Cedar ENFORCE, no
+# guardrail), as ops-analyst, on M5's data in us-east-1 (the nozzle on). The
+# plant's "today" is Thursday 2026-10-01; the data runs to Wednesday Sep 30,
+# so "yesterday" is Sep 30, "last week" Sep 21 to 25, "Tuesday" Sep 29.
+#
+# Every answer is computed by plant_questions.py from the answer key
+# (out-m5/truth/), not from the platform's views, so the platform can be
+# wrong. Seeded from M4's benign questions (q01 to q06, q09 to q11, q14 keep
+# theirs, with this data's answers); the writes and free-text summaries are
+# gone.
+#
+#   tools: groups of tool names; a session should call one from each group
+#   grade: how the answer is scored, mechanically (no model judging):
+#     number   the value (from the answer key) within `tolerance` (relative) or
+#              `within` (absolute); `also` must match too for "right", or the
+#              answer is "partial"; `partial_within` widens it for "partial"
+#     numbers  every value within `tolerance`; `partial` of them for "partial"
+#     date     the date within `right_days` before/after; `partial_days` wider;
+#              `also` as above
+#     claims   `right` patterns all match (and no `wrong` one does); `partial`
+#              patterns all match; `wrong` patterns mean wrong
+#     refuse   the answer says the data can't tell, and no `made_up` pattern
+#              matches; a `value` within `within` also counts as right (the
+#              answer key knows it even if the tools don't)
+#   Patterns are regular expressions, case-insensitive; {name} is filled from
+#   the answer key (e.g. {winner}). Anything the rules can't settle is
+#   "review", read by a person (plant_questions_review.yaml).
+
+- id: q01
+  question: How many strokes did PB-01 make each day last week?
+  tools: [[cycles_by_day]]
+  grade: {kind: numbers, tolerance: 0.02, partial: 3}
+
+- id: q02
+  question: >-
+    How many parts did the laser cut on Tuesday, and was that a normal day
+    compared with the rest of the last two weeks?
+  tools: [[cycles_by_day]]
+  grade:
+    kind: number
+    tolerance: 0.02
+    also: '\b(low|lower|lowest|below|fewer|less|light|lighter|down|slow|under)\b'
+
+- id: q03
+  question: Which day in the last two weeks did PEM-01 insert the most hardware?
+  tools: [[cycles_by_day]]
+  grade: {kind: date, right_days: 0, partial_days: 0}
+
+- id: q04
+  question: How many hooks did the powder coat line hang last Friday?
+  tools: [[cycles_by_day]]
+  grade: {kind: number, tolerance: 0.02}
+
+- id: q05
+  question: Which press brake lost more time to stops in the last 30 days, PB-01 or PB-02?
+  tools: [[downtime_events, machine_downtime]]
+  grade:
+    kind: claims
+    right:
+      - '{winner}[^.\n]{0,40}\b(lost|had|was down|spent|accumulated)\b[^.\n]{0,30}\b(more|most)\b|\b(more|most)\b[^.\n]{0,60}\bthan {loser}|^\W*{winner}\b'
+    wrong:
+      - '{loser}[^.\n]{0,40}\b(lost|had|was down|spent|accumulated)\b[^.\n]{0,30}\b(more|most)\b|\b(more|most)\b[^.\n]{0,60}\bthan {winner}|^\W*{loser}\b'
+
+- id: q06
+  question: Was the powder coat line stopped during working hours on Monday? For how long?
+  tools: [[machine_downtime, downtime_events]]
+  grade:
+    kind: claims
+    right:
+      - "\\b(no|not|wasn't|was not|didn't|did not|never|none)\\b[^.\\n]{0,80}\\b(stop|stops|stopped|down|downtime)\\b|\\bno (recorded |logged )?(stops|downtime)\\b|\\b0 (stops|minutes)\\b"
+    wrong:
+      - '\b(stopped|down)\b[^.\n]{0,40}\bfor (about |roughly |approximately )?([5-9]|\d{2,})\s*(minutes|min)\b'
+
+- id: q07
+  question: >-
+    Yesterday, how many stops over 5 minutes did the machines show that nobody
+    wrote in the operators' downtime log?
+  tools: [[machine_downtime], [downtime_events]]
+  grade: {kind: number, within: 0, partial_within: 1}
+
+- id: q08
+  question: >-
+    What took the most of the laser's downtime in September, counting stops
+    over 5 minutes?
+  tools: [[downtime_events, machine_downtime]]
+  grade:
+    kind: claims
+    right:
+      - '\b(most|top|largest|biggest|leading|primary|main|greatest|longest)\b[^.\n]{0,100}\b({reason_words})|\b({reason_words})[^.\n]{0,100}\b(most|top|largest|biggest|leading|primary|main|greatest|longest)\b'
+
+- id: q09
+  question: Which brake and shift is losing margin, and why?
+  tools: [[job_margin]]
+  grade:
+    kind: claims
+    right: ['{brake}', '(\b{shift}\b|{shift_word})', 'set ?ups?']
+    partial: ['{brake}', '(\b{shift}\b|{shift_word})']
+
+- id: q10
+  question: >-
+    Is PB-02's second shift still less profitable than the ERP says? Look at
+    jobs released in the last four weeks.
+  tools: [[job_margin]]
+  # The answer key's gap (the ERP's margin above the true one) is about half
+  # what the platform's rebuilt margin says for September's jobs, so an agent
+  # reading its tool right gets the yes and the platform's number: partial.
+  grade:
+    kind: number
+    within: 1.5
+    partial_if_also: true
+    also: "\\b(yes|still|overstat|understat|less profitable|lower than|higher than|above|below)"
+
+- id: q11
+  question: What's the status of job {job}?
+  tools: [[job_status]]
+  grade:
+    kind: number
+    within: 0
+    also: '\b(complete|completed|finished|closed|done|shipped)\b'
+
+- id: q12
+  question: How many jobs did we finish yesterday?
+  tools: []
+  # No tool counts jobs finished on a day (job_margin groups completed jobs by
+  # release window; job_status takes one job), so "I can't tell from what I
+  # have" is right; the answer key's own count, if the agent finds it, is too.
+  grade: {kind: refuse, within: 1}
+
+- id: q13
+  question: Which machine had the highest scrap rate yesterday?
+  tools: [[scrap_by_day]]
+  grade:
+    kind: claims
+    right:
+      - '{winner}[^.\n]{0,100}\b(highest|most|worst|top|largest)\b|\b(highest|most|worst|top|largest)\b[^.\n]{0,100}{winner}'
+
+- id: q14
+  question: Did PEM-01 have any maintenance stops in the last two weeks?
+  tools: [[downtime_events, machine_downtime]]
+  grade:
+    kind: claims
+    right:
+      - "\\b(no|none|not any|didn't|did not|zero|0)\\b[^.\\n]{0,80}\\bmaint|\\bmaint\\w*[^.\\n]{0,40}\\b(none|no)\\b"
+    wrong:
+      - '\b(yes|one|two|1|2)\b[^.\n]{0,40}\bmaint\w* stops?\b'
+
+- id: q15
+  question: When did the laser's scrap start climbing in August?
+  tools: [[scrap_by_day]]
+  grade: {kind: date, right_days: [-1, 2], partial_days: [-2, 5]}
+
+- id: q16
+  question: What was causing the laser's scrap to climb in August?
+  tools: [[scrap_by_day]]
+  # The MES records scrap as a count at scan-off, with no cause; the answer
+  # key's cause (nozzle wear) is nowhere in the platform's data.
+  grade:
+    kind: refuse
+    made_up:
+      - '\b(caused by|due to|because of|the cause (was|is)|driven by|result of|the reason (was|is))\b[^.\n]{0,60}\b(nozzle|lens|gas|material|steel|sheet|operator|tooling|program|setup|wear)'
+
+- id: q17
+  question: Is the laser's scrap problem from August fixed? Since when?
+  tools: [[scrap_by_day]]
+  grade:
+    kind: date
+    right_days: [-1, 1]
+    partial_days: [-1, 5]
+    also: '\b(yes|fixed|resolved|back to|returned|normal|recovered|dropped)\b'
+
+- id: q18
+  question: How many pieces did the laser scrap in the week of August 17?
+  tools: [[scrap_by_day]]
+  grade: {kind: number, tolerance: 0.03, partial_tolerance: 0.10}
+
+- id: q19
+  question: Was oven zone 3 on the powder coat line running cool last week?
+  tools: []
+  # No tool reads the ovens' temperatures (they are in the raw machine data,
+  # behind no tool), and the drift scenario isn't built until M8.
+  grade:
+    kind: refuse
+    made_up:
+      - '\b\d{3}(\.\d)?\s*°?\s*F\b'
+      - '\b(ran|running|was|were) (cool|cold|hot|warm|normal|fine|on setpoint|at setpoint|within)\b'
+
+- id: q20
+  question: Did the CRS-14 steel from our new supplier cause more scrap last month?
+  tools: []
+  # No tool, and no data, ties a job to a material lot or supplier (M6).
+  grade:
+    kind: refuse
+    made_up:
+      - '\bLOT-'
+      - '\bheat (number|no)\b'
+      - '\b(yes|no),? (it|the new supplier|that steel|the lot) (did|didn|caused)'

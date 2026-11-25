@@ -1,10 +1,22 @@
 # Hidden scenarios (spec §3.5): the stories the data platform is supposed to
 # find without looking at the answer key. Each one can be toggled off.
 #
-# Only the M1 scenario exists so far. The others (laser_nozzle_degradation,
-# oven_zone3_drift, bad_material_lot) are added in the milestone that needs
-# them; listing one here before it is built is an error.
+# Built so far: the slow second shift (M1, on) and the degrading laser nozzle
+# (M5, off here so this file still reproduces M1 to M4's numbers; M5's backfill
+# turns it on with eval/scenarios_nozzle.yaml). The others (oven_zone3_drift,
+# bad_material_lot) are added in the milestone that needs them; listing one
+# here before it is built is an error.
 
 pb02_second_shift_setups:
   enabled: true
   setup_multiplier: 2.8   # PB-02 setups on 2nd shift take this × standard
+
+laser_nozzle_degradation:
+  enabled: false
+  start_day: 41               # day 1 is the window's first day (Jul 3: day 41 is Wed Aug 12)
+  ramp_days: 10               # calendar days from start_rate to end_rate, then it holds
+  start_rate: 0.01            # NOZZLE_WEAR share of LSR-01's otherwise good pieces
+  end_rate: 0.09
+  noticed_weekly_rate: 0.05   # Monday's look at last week's laser scrap; above this, the nozzle is changed
+  nozzle_change_minutes: [30, 90]
+  max_ramp_working_days: 15   # a guard: the ramp ends here if nobody has noticed

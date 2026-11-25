@@ -121,9 +121,22 @@ class CycleRecord:
     scrap_cause: ScrapCause | None
 
 
+@dataclass(frozen=True, slots=True)
+class ScenarioEvent:
+    """A moment in a hidden scenario's story, for evals that score lead time."""
+
+    scenario: str
+    event: str
+    machine_id: str
+    at: datetime
+    local_date: date
+    detail: str
+
+
 @dataclass(slots=True)
 class SimulationResult:
     jobs: list[JobRecord] = field(default_factory=list)
     operations: list[OperationRecord] = field(default_factory=list)
     machine_states: list[MachineStateRecord] = field(default_factory=list)
     cycles: list[CycleRecord] = field(default_factory=list)
+    events: list[ScenarioEvent] = field(default_factory=list)

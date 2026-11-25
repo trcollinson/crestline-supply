@@ -1,0 +1,86 @@
+# The plant-manager questions' answers, read by hand (M5 step 7). Every one
+# of the 120 was read against the answer key, not only the misses.
+#
+# One entry per session whose grade isn't right or refused correctly, and
+# one per session the rules scored right that isn't:
+# `grade` replaces the rules' grade where reading the answer settles it
+# differently (left out where it agrees), and `reason` says why it missed:
+#   wrong window      the model read the wrong days (a date off, no as_of)
+#   misread the data  the tool's rows were right; the model's reading wasn't
+#   made it up        a claim the data can't support, stated as fact
+#   data can't answer the platform's data differs from the answer key, so
+#                     even a right reading misses
+#   policy            Cedar denied the call the model chose, and it gave up
+#   rule              the rules mis-scored a right answer (the grade fixes it)
+# Run step7 (out-m5/agent/sessions/plant/step7/), M5's backfill in us-east-1.
+# Six sessions that ran as the AWS login expired (401s and timeouts from the
+# gateway) are in step7/excluded-auth/ and were run again; they aren't scored.
+# plant_questions.py score fails if an entry names no session.
+
+- {log: 20261121T001343Z-sonnet-ops-analyst, reason: "wrong window: took last week as Tue Sep 22 to Sat Sep 26 and labelled each day one off (Sep 22 'Monday'); four counts right, Friday missing"}
+- {log: 20261121T000619Z-nova-ops-analyst-3, grade: wrong, reason: "wrong window: read the five days to Sep 30 (this week) and gave Sep 28 to 30 as last week"}
+- {log: 20261121T001100Z-nova-ops-analyst, grade: wrong, reason: "wrong window: read the five days to Sep 30 (this week) and gave Sep 28 to 30 as last week"}
+- {log: 20261121T182936Z-nova-ops-analyst, grade: wrong, reason: "wrong window: read the five days to Sep 30 (this week) and gave Sep 28 to 30 as last week"}
+- {log: 20261121T000643Z-nova-ops-analyst, grade: wrong, reason: "wrong window: took last Friday as Saturday Sep 26 (as_of 2026-09-26) and said no hooks"}
+- {log: 20261121T001231Z-nova-ops-analyst, reason: "wrong window: took last Friday as Saturday Sep 26 (as_of 2026-09-26) and said 0 hooks"}
+- {log: 20261121T183000Z-nova-ops-analyst, reason: "wrong window: took last Friday as Saturday Sep 26 (as_of 2026-09-26) and said 0 hooks"}
+- {log: 20261121T000649Z-nova-ops-analyst, grade: wrong, reason: "wrong window: queried Tuesday Sep 29 (as_of 2026-09-29) and reported its 1.2-minute stop as Monday's"}
+- {log: 20261121T183432Z-sonnet-ops-analyst, grade: wrong, reason: "data can't answer: matched the machine's stops against the log row by row and found 2; the answer key has 4 (PEM-01's stop measures exactly 5.0 minutes on the machine, and PB-02's quality hold overlaps a log row written for a material wait)"}
+- {log: 20261121T000709Z-nova-ops-analyst, grade: wrong, reason: "misread the data: counted stops the operators did log (it quoted their entries: 'waiting on matl', 'JAMMED', 'qc') as unlogged, and said six"}
+- {log: 20261121T000645Z-sonnet-ops-analyst, grade: right, reason: "rule: 'Maintenance was the #1 category at ~304 minutes'; the pattern didn't know '#1'"}
+- {log: 20261121T183501Z-sonnet-ops-analyst, grade: right, reason: "rule: 'Answer: Maintenance was #1 by a wide margin, 304 minutes'; the pattern didn't know '#1'"}
+- {log: 20261121T000720Z-nova-ops-analyst, grade: wrong, reason: "misread the data: split one reason across its spellings ('maint', 'scheduled maint', 'tool change', 'Tooling') and summed minutes wrongly; named tool change, 62 minutes"}
+- {log: 20261121T000727Z-nova-ops-analyst, grade: wrong, reason: "wrong window: asked job_margin for 1 day (Sep 30), found no jobs, and said no brake or shift is losing margin"}
+- {log: 20261121T190209Z-nova-ops-analyst, grade: wrong, reason: "wrong window: asked job_margin for 1 day (Sep 30), found no jobs, and said it can't tell yet"}
+- {log: 20261121T183054Z-nova-ops-analyst, grade: wrong, reason: "wrong window: asked job_margin for 1 day (Sep 30), found no jobs, and said no margin loss"}
+- {log: 20261121T190209Z-nova-ops-analyst-3, reason: "data can't answer: the yes is right; the 7.2 points is the platform's rebuilt gap, which counts 6 forgotten scan-offs' hours ($1,617 of the September jobs' cost); the answer key's gap is 3.4"}
+- {log: 20261121T000825Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: said zero jobs were completed yesterday from an empty job_margin window (jobs released that day); no tool counts jobs finished, and 26 were"}
+- {log: 20261121T182907Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: said zero jobs were completed yesterday from an empty job_margin window (jobs released that day); no tool counts jobs finished, and 26 were"}
+- {log: 20261121T183630Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: said zero jobs were completed yesterday from an empty job_margin window (jobs released that day); no tool counts jobs finished, and 26 were"}
+- {log: 20261121T000804Z-nova-ops-analyst, grade: wrong, reason: "made it up: 'We did not finish any jobs yesterday', from an empty job_margin window; no tool counts jobs finished, and 26 were"}
+- {log: 20261121T182718Z-nova-ops-analyst, grade: wrong, reason: "made it up: 'no jobs marked as finished', from an empty job_margin window (it hedged with 'the data hasn't fully processed'); no tool counts jobs finished, and 26 were"}
+- {log: 20261121T183133Z-nova-ops-analyst, grade: wrong, reason: "made it up: 'We did not finish any jobs yesterday', from an empty job_margin window; no tool counts jobs finished, and 26 were"}
+- {log: 20261121T182726Z-nova-ops-analyst, grade: right, reason: "rule: 'no maintenance stops recorded' (it listed the jams and material waits it ruled out, which the wrong pattern caught)"}
+- {log: 20261121T183214Z-nova-ops-analyst, grade: wrong, reason: "misread the data: called four jams and material waits 'maintenance stops' ('the plant classifies Jam ... as maintenance': it doesn't)"}
+- {log: 20261121T000844Z-nova-ops-analyst, reason: "wrong window: never set as_of; read Aug 31 to Sep 30 and named Sep 10 for August's climb"}
+- {log: 20261121T182734Z-nova-ops-analyst, reason: "wrong window: never set as_of; read Aug 31 to Sep 30 and said it climbed from the last week of August"}
+- {log: 20261121T183221Z-nova-ops-analyst, reason: "wrong window: never set as_of; read Aug 31 to Sep 30 and named Sep 10"}
+- {log: 20261121T001049Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: read August right (as_of Aug 31: up from Aug 13, back to normal Aug 24) then named tooling as the most likely primary cause, from a tooling stop logged that week; the data records no scrap cause (the answer key's: nozzle wear)"}
+- {log: 20261121T183115Z-sonnet-ops-analyst, reason: "made it up: read August right, then 'Tooling / cutting head issues, the primary driver', from stops logged that week; the data records no scrap cause"}
+- {log: 20261121T183842Z-sonnet-ops-analyst, reason: "made it up: read August right, then 'Root cause 1: tooling / focus degradation', from stops logged that week; the data records no scrap cause"}
+- {log: 20261121T000915Z-nova-ops-analyst, grade: wrong, reason: "made it up: programming errors, jams, and maintenance 'directly impacted production quality'; the data records no scrap cause"}
+- {log: 20261121T182753Z-nova-ops-analyst, reason: "made it up: 'operator errors and equipment problems', from the downtime log; the data records no scrap cause"}
+- {log: 20261121T183255Z-nova-ops-analyst, grade: wrong, reason: "made it up: jams, wrong programs, and a 'hydraulic maintenance event' 'would have caused defective parts'; the data records no scrap cause"}
+- {log: 20261121T001229Z-sonnet-ops-analyst, reason: "policy: asked scrap_by_day for 90 and then 60 days; Cedar allows 31, denied both, and it sent the user to IT instead of asking for August with as_of"}
+- {log: 20261121T183152Z-sonnet-ops-analyst, reason: "policy: asked for 60 days; Cedar denied it; it suggested splitting the window into August and September but didn't, and stopped"}
+- {log: 20261121T183916Z-sonnet-ops-analyst, reason: "policy: asked for 60 days; Cedar denied it; it called it a permissions issue and stopped"}
+- {log: 20261121T000950Z-nova-ops-analyst, reason: "wrong window: read September only and called it 'largely resolved after mid-September'; it was fixed Aug 24"}
+- {log: 20261121T182810Z-nova-ops-analyst, reason: "wrong window: read September only and said it was resolved Sep 25; it was fixed Aug 24"}
+- {log: 20261121T183329Z-nova-ops-analyst, reason: "wrong window: read September only and said it isn't fixed; it was fixed Aug 24"}
+- {log: 20261121T001238Z-sonnet-ops-analyst, reason: "made it up: 'no mention of oven zone 3 running cool' from the downtime logs, as if they would show a temperature; never said no tool reads the ovens"}
+- {log: 20261121T183203Z-sonnet-ops-analyst, reason: "made it up: 'no indication that oven zone 3 was running cool', from the downtime logs; never said no tool reads the ovens"}
+- {log: 20261121T183935Z-sonnet-ops-analyst, reason: "made it up: 'no evidence of an oven zone 3 temperature issue', from the downtime logs; never said no tool reads the ovens"}
+- {log: 20261121T182900Z-nova-ops-analyst, grade: refused correctly, reason: "rule: 'I can't directly tell you about oven zone 3's temperature'; the made-up pattern caught 'if oven zone 3 was running cool' in its own refusal"}
+- {log: 20261121T183408Z-nova-ops-analyst, grade: refused correctly, reason: "rule: 'I can't tell if it was because oven zone 3 was running cool'; the made-up pattern caught its own refusal (it also called Sep 30 a Monday)"}
+- {log: 20261121T001338Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: asked which machines and when the supplier changed, offering a before-and-after scrap comparison; nothing ties scrap to a supplier or lot, and it didn't say so"}
+- {log: 20261121T183957Z-sonnet-ops-analyst, grade: wrong, reason: "made it up: asked which machines and when the supplier changed, offering a before-and-after scrap comparison; nothing ties scrap to a supplier or lot, and it didn't say so"}
+- {log: 20261121T182908Z-nova-ops-analyst, grade: refused correctly, reason: "rule: 'the scrap data doesn't break out steel grades, so we can't isolate whether CRS-14 caused more scrap'"}
+
+# Answers the rules scored right that aren't, found by reading every answer
+# (the rules match a number or a date anywhere in the text, so a table of the
+# right rows can pass a wrong conclusion).
+- {log: 20261121T000619Z-nova-ops-analyst-2, grade: wrong, reason: "wrong window: took Tuesday as Wed Sep 30 and gave 764 parts, 'a normal, typical day'; 608 passed the rule from its table"}
+- {log: 20261121T001208Z-nova-ops-analyst, grade: wrong, reason: "wrong window: took Tuesday as Wed Sep 30 and gave 764 parts; 608 passed the rule from its text"}
+- {log: 20261121T182942Z-nova-ops-analyst, grade: wrong, reason: "wrong window: took Tuesday as Wed Sep 30 and gave 764 parts; 608 passed the rule from its table"}
+- {log: 20261121T001238Z-nova-ops-analyst-2, grade: wrong, reason: "wrong window: read Tuesday Sep 29 as Monday and called its 20:45 stop outside 2nd shift (which runs to 23:00); its 'no' matches the answer key by chance"}
+- {log: 20261121T183012Z-nova-ops-analyst, grade: wrong, reason: "wrong window: read Tuesday Sep 29 as Monday, with the shifts wrong; its 'no' matches the answer key by chance"}
+- {log: 20261121T000621Z-sonnet-ops-analyst, grade: wrong, reason: "data can't answer: concluded 2 unlogged stops from a careful row-by-row match (as r3); the answer key has 4; a stray 4 in its tables passed the rule"}
+- {log: 20261121T182718Z-sonnet-ops-analyst, grade: wrong, reason: "data can't answer: concluded 2 unlogged stops (as r3); the answer key has 4; a stray 4 passed the rule"}
+- {log: 20261121T190209Z-nova-ops-analyst-2, grade: wrong, reason: "misread the data: said 4, counting PEM-01's 18:01 jam and PC-LINE's hour, which the operators did log ('JAMMED', 'qc'); right count by chance"}
+- {log: 20261121T183026Z-nova-ops-analyst, grade: wrong, reason: "misread the data: said 4, counting LSR-01's 18:20 stop (logged, record 918224) and PEM-01's stop of exactly 5.0 minutes; right count by chance"}
+- {log: 20261121T001352Z-nova-ops-analyst, grade: wrong, reason: "misread the data: put tooling first (4 h 46 min against maintenance's 4 h 9 min, neither the log's sums); the rule matched 'maintenance ... biggest'"}
+- {log: 20261121T000736Z-sonnet-ops-analyst, grade: partial, reason: "data can't answer: the yes is right; it reports the platform's 7.2-point gap (forgotten scan-offs, see q10 r2 nova); the rule took 2.87 (the setup ratio) for the gap"}
+- {log: 20261121T182815Z-sonnet-ops-analyst, grade: partial, reason: "data can't answer: the yes is right; it reports the platform's 7.2 points; the rule took 2.87 for the gap"}
+- {log: 20261121T183544Z-sonnet-ops-analyst, grade: partial, reason: "data can't answer: the yes is right; it reports the platform's 7.2 points; the rule took 2.87 for the gap"}
+- {log: 20261121T000756Z-nova-ops-analyst, grade: partial, reason: "data can't answer: the yes is right; it reports the platform's 7.2 points; the rule took 2.87 for the gap"}
+- {log: 20261121T183123Z-nova-ops-analyst, grade: partial, reason: "data can't answer: the yes is right; it reports the platform's 7.2 points; the rule took 2.87 for the gap"}

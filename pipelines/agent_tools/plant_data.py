@@ -1,4 +1,4 @@
-"""The `PlantData` target: the agent's five read tools, one Lambda.
+"""The `PlantData` target: the agent's read tools, one Lambda.
 
 Each tool is a SQL file in sql/ run in Athena over the same views the
 questions in queries/ read (queries/athena/sources.sql and the views built on it),
@@ -49,7 +49,7 @@ def answer(name: str, arguments: dict, run) -> dict:
         return _rows(
             run("job_margin", [first.isoformat(), last.isoformat()]), first, last
         )
-    if name in {"downtime_events", "machine_downtime", "cycles_by_day"}:
+    if name in {"downtime_events", "machine_downtime", "cycles_by_day", "scrap_by_day"}:
         machine = tools.machine(arguments)
         first, last = tools.window(arguments, last_day)
         rows = run(name, [machine, first.isoformat(), last.isoformat()])

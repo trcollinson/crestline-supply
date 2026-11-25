@@ -84,4 +84,4 @@ def test_the_decoded_file_is_written_once_and_redone_when_its_source_changes(tmp
     later = dest.stat().st_mtime + 10
     os.utime(source, (later, later))
     assert write_rule_records(source, dest) == 1
-    assert not dest.with_suffix(".partial").exists()
+    assert not list(dest.parent.glob("*.partial"))

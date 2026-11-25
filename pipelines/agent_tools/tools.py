@@ -85,6 +85,14 @@ TARGETS: dict[str, list[Tool]] = {
             ["machine_id", "days"],
         ),
         Tool(
+            "scrap_by_day",
+            "Pieces made and scrapped per plant day for one machine, from the "
+            "operators' MES scans, with the ERP's posted scrap beside them "
+            "(empty until the nightly labor batch posts the day).",
+            {"machine_id": MACHINE_ARG, "days": DAYS_ARG, "as_of": AS_OF_ARG},
+            ["machine_id", "days"],
+        ),
+        Tool(
             "job_margin",
             "Margin of completed jobs released in the window, by brake and setup "
             "shift: standard, ERP, and rebuilt from hours actually worked.",

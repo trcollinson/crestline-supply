@@ -1,5 +1,7 @@
 # Simulator output (includes the answer key)
 out/
+out-m5/
+out-m5-seed2/
 
 # Python
 .venv/

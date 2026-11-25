@@ -13,6 +13,7 @@ import aws_cdk as cdk
 
 from stacks.agent import AgentStack
 from stacks.agent_spike import AgentSpikeStack
+from stacks.brief import BriefStack
 from stacks.curated import CuratedStack
 from stacks.erp_api import ErpApiStack
 from stacks.erp_ingest import ErpIngestStack
@@ -110,6 +111,8 @@ def build_app(context: dict | None = None) -> cdk.App:
     # The red-team eval's configurations (step 6): -c agentPolicySet=open
     # permits both roles everything; -c agentGuardrail=true adds the
     # guardrail that withholds a tool reply scored as a prompt attack.
+    # A second copy in another region (M5) names its roles apart:
+    # -c agentRoleSuffix=-m5 (IAM role names are account-wide).
     tags = {"project": "crestline", "layer": "agent", "milestone": "M4"}
     agent = AgentStack(
         app,
@@ -123,10 +126,32 @@ def build_app(context: dict | None = None) -> cdk.App:
         != "false",
         policy_set=app.node.try_get_context("agentPolicySet") or "cedar",
         guardrail=str(app.node.try_get_context("agentGuardrail")).lower() == "true",
+        role_suffix=app.node.try_get_context("agentRoleSuffix") or "",
         tags=tags,
     )
     for key, value in tags.items():
         cdk.Tags.of(agent).add(key, value)
+
+    # The morning brief, written and emailed at 05:30 plant time (M5 step 6).
+    # -c briefEmail=... subscribes an address; -c briefClockStart=2026-08-12
+    # -c briefClockAnchor=2026-11-23 replays the plant a morning per weekday
+    # (both, or neither: then every run writes the last morning with data);
+    # -c briefSchedule='cron(...)' replaces 05:30 weekdays, for a test run.
+    tags = {"project": "crestline", "layer": "brief", "milestone": "M5"}
+    brief = BriefStack(
+        app,
+        "CrestlineBrief",
+        raw_bucket=foundation.raw_bucket,
+        results_bucket=foundation.results_bucket,
+        curated_bucket=curated.bucket,
+        email=app.node.try_get_context("briefEmail"),
+        schedule=app.node.try_get_context("briefSchedule"),
+        clock_start=app.node.try_get_context("briefClockStart"),
+        clock_anchor=app.node.try_get_context("briefClockAnchor"),
+        tags=tags,
+    )
+    for key, value in tags.items():
+        cdk.Tags.of(brief).add(key, value)
 
     # M4 step 0's spike, only when asked: -c agentSpike=true.
     if str(app.node.try_get_context("agentSpike")).lower() == "true":

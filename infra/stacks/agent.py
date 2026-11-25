@@ -77,12 +77,17 @@ class AgentStack(cdk.Stack):
         scada_forbid: bool = True,
         policy_set: str = "cedar",
         guardrail: bool = False,
+        role_suffix: str = "",
         **kwargs,
     ) -> None:
         if policy_set not in POLICY_SETS:
             raise ValueError(f"policy_set must be one of {POLICY_SETS}")
         if policy_mode not in POLICY_MODES:
             raise ValueError(f"agentPolicyMode must be one of {POLICY_MODES}")
+        # IAM is one namespace per account, so a second copy of this stack
+        # (another region: M5's build, a fresh-clone check) needs its own
+        # role names. Empty, the template is exactly what it was before.
+        self.role_suffix = role_suffix
         super().__init__(
             scope,
             construct_id,
@@ -291,7 +296,7 @@ class AgentStack(cdk.Stack):
             role = iam.Role(
                 self,
                 role_name.removeprefix("crestline-").title().replace("-", ""),
-                role_name=role_name,
+                role_name=role_name + role_suffix,
                 description="An M4 agent principal: may invoke the Crestline gateway, nothing else",
                 assumed_by=iam.AccountRootPrincipal(),
                 max_session_duration=cdk.Duration.hours(1),
@@ -313,6 +318,8 @@ class AgentStack(cdk.Stack):
         cdk.CfnOutput(self, "PolicySet", value=policy_set)
         cdk.CfnOutput(self, "Guardrail", value=str(guardrail).lower())
         cdk.CfnOutput(self, "GatewayLogGroup", value=gateway_logs.log_group_name)
+        if role_suffix:  # the client reads it to know which roles to assume
+            cdk.CfnOutput(self, "RoleSuffix", value=role_suffix)
         for target, fn in functions.items():
             cdk.CfnOutput(self, f"{target}LogGroup", value=fn.log_group.log_group_name)
 
@@ -442,7 +449,13 @@ class AgentStack(cdk.Stack):
         """
         name = name or path.stem
         variables = {"GatewayArn": gateway.attr_gateway_arn, **(values or {})}
-        statement = cdk.Fn.sub(path.read_text(), variables)
+        text = path.read_text()
+        for role_name in ROLES:  # the roles' names in this copy of the stack
+            text = text.replace(
+                f'assumed-role/{role_name}"',
+                f'assumed-role/{role_name}{self.role_suffix}"',
+            )
+        statement = cdk.Fn.sub(text, variables)
         if path.suffix == ".policy":
             # A guardrail rule (`suppressOutput ... when guardrails`) is not
             # Cedar: it goes in the definition's `policy` statement, without

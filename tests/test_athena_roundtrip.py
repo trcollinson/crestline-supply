@@ -13,6 +13,7 @@ database from the SQL files in this checkout first, so it tests the SQL as
 it is now, not as it was last set up. No release tag until it passes.
 """
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -26,7 +27,8 @@ from crestline.athena import Athena
 pytestmark = pytest.mark.athena
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUT = REPO_ROOT / "out"
+# The backfill the stacks hold: CRESTLINE_OUT=out-m5 for M5's, in us-east-1.
+OUT = REPO_ROOT / os.environ.get("CRESTLINE_OUT", "out")
 PLANT_TZ = ZoneInfo("America/Denver")
 
 

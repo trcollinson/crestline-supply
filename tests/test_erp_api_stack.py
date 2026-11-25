@@ -143,6 +143,39 @@ def test_the_package_holds_the_api_two_crestline_modules_the_store_and_the_mess(
     assert f"--target={out}" in install
 
 
+def test_the_package_is_the_same_from_any_checkout(tmp_path, monkeypatch):
+    """uv writes the checkout's venv path into console scripts and their
+    RECORD hashes; neither runs in Lambda, so neither ships (M5 step 2: a
+    deploy from another folder showed a code change that changed nothing)."""
+    store = tmp_path / "erp.db"
+    store.write_bytes(b"sqlite")
+    out = tmp_path / "package"
+
+    def install(*arguments):
+        if arguments[0] == "pip":  # what `uv pip install --target` leaves
+            (out / "bin").mkdir(parents=True)
+            (out / "bin" / "uvicorn").write_text("#!/some/checkout/.venv/bin/python\n")
+            (out / "uvicorn-0.54.0.dist-info").mkdir()
+            (out / "uvicorn-0.54.0.dist-info" / "RECORD").write_text(
+                "../../bin/uvicorn,sha256=x\n"
+            )
+            (out / "uvicorn-0.54.0.dist-info" / "METADATA").write_text(
+                "Name: uvicorn\n"
+            )
+
+    monkeypatch.setattr(erp_api.UvBundle, "_uv", staticmethod(install))
+    out.mkdir()
+    assert erp_api.UvBundle(store, None).try_bundle(str(out))
+
+    assert not (out / "bin").exists()
+    assert [p.name for p in (out / "uvicorn-0.54.0.dist-info").iterdir()] == [
+        "METADATA"
+    ]
+    assert "/.venv/" not in "".join(
+        p.read_text(errors="ignore") for p in out.rglob("*") if p.is_file()
+    )
+
+
 def test_packaging_needs_a_backfill_first(tmp_path):
     with pytest.raises(FileNotFoundError, match="crestline sim backfill"):
         erp_api.UvBundle(tmp_path / "missing.db", None).try_bundle(str(tmp_path))

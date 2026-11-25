@@ -37,11 +37,15 @@ def stack_outputs(session: boto3.Session, stack: str = STACK) -> dict[str, str]:
     return {o["OutputKey"]: o["OutputValue"] for o in described["Stacks"][0]["Outputs"]}
 
 
-def as_role(session: boto3.Session, role: str) -> boto3.Session:
-    """A session as one of the agent's roles, by its short name."""
+def as_role(session: boto3.Session, role: str, suffix: str = "") -> boto3.Session:
+    """A session as one of the agent's roles, by its short name.
+
+    `suffix` is the stack's `RoleSuffix` output: a second copy of the stack
+    in the same account (another region) names its roles apart.
+    """
     account = session.client("sts").get_caller_identity()["Account"]
     credentials = session.client("sts").assume_role(
-        RoleArn=f"arn:aws:iam::{account}:role/{ROLES[role]}",
+        RoleArn=f"arn:aws:iam::{account}:role/{ROLES[role]}{suffix}",
         RoleSessionName=f"crestline-{role}",
     )["Credentials"]
     return boto3.Session(
@@ -165,5 +169,8 @@ def first_reply(stream, request_id: int) -> dict:
 def connect(role: str | None = None, session: boto3.Session | None = None) -> Gateway:
     """A gateway session, as `role` if given (else as the laptop's own identity)."""
     session = session or boto3.Session()
-    url = stack_outputs(session)["GatewayUrl"]
-    return Gateway(url, as_role(session, role) if role else session)
+    outputs = stack_outputs(session)
+    suffix = outputs.get("RoleSuffix", "")
+    return Gateway(
+        outputs["GatewayUrl"], as_role(session, role, suffix) if role else session
+    )

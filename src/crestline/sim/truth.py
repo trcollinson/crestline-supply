@@ -85,8 +85,23 @@ CYCLES_SCHEMA = {
     "scrap_cause": pl.String,
 }
 
+# Only written when a scenario with a story in time is on (M5's nozzle).
+EVENTS_SCHEMA = {
+    "scenario": pl.String,
+    "event": pl.String,
+    "machine_id": pl.String,
+    "at_utc": UTC_TIMESTAMP,
+    "local_date": pl.Date,
+    "detail": pl.String,
+}
+
 # Table column -> record attribute, where the two differ (see module docstring).
-RENAMED_ATTRIBUTES = {"started_at": "start", "ended_at": "end", "completed_at": "at"}
+RENAMED_ATTRIBUTES = {
+    "started_at": "start",
+    "ended_at": "end",
+    "completed_at": "at",
+    "at_utc": "at",
+}
 
 SECONDS = (pl.col("ended_at") - pl.col("started_at")).dt.total_seconds()
 
@@ -111,7 +126,7 @@ def build_truth_tables(
     labor = _labor(machine_states, reference)
     operations = _operations(result, machine_states, labor, reference)
     costs = _costs(jobs, operations, cycles, reference)
-    return {
+    tables = {
         "truth_jobs": jobs,
         "truth_operations": operations,
         "truth_machine_states": machine_states,
@@ -119,6 +134,11 @@ def build_truth_tables(
         "truth_labor": labor,
         "truth_costs": costs,
     }
+    if result.events:
+        tables["truth_events"] = _frame(
+            result.events, EVENTS_SCHEMA, RENAMED_ATTRIBUTES
+        ).sort("scenario", "at_utc")
+    return tables
 
 
 def write_truth(tables: Mapping[str, pl.DataFrame], out_dir: Path) -> dict[Path, int]:

@@ -152,6 +152,13 @@ def brake_strokes_sql(database: str) -> str:
     Only days with machine data count: the replay may cover fewer days
     than the MES files. The plant day is machines.sql's idiom (see
     machine_cycles_by_day): through a timestamp, Athena's days are UTC days.
+
+    The newest day with scans isn't checked: a scan left open on it is
+    closed the next working morning and arrives in that day's file, so its
+    pieces are missing until then while its strokes are already in (M5 step
+    2: Sep 30, 31 strokes ahead of the pieces, from one scan left open at
+    15:14). Any earlier day is complete: the morning that closed its open
+    scans is a working day, and its file has landed with them.
     """
     minimum, share = BRAKE_TOLERANCE
     return f"""
@@ -166,6 +173,9 @@ pieces as (
     select cast(scan_on_local as date) as day, sum(qty_good + qty_scrap) as pieces
     from {database}.mes_labor
     where work_center = 'BRAKE'
+      and cast(scan_on_local as date) < (
+          select max(cast(scan_on_local as date)) from {database}.mes_labor
+      )
     group by 1
 )
 select count(*),

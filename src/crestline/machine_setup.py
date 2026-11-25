@@ -5,8 +5,9 @@
   but can't hand out a private key, so this makes them through the API
   instead: a key pair and certificate per gateway, attached to the
   gateway's thing and its policy (both in the stack). The private keys stay
-  on this machine, in `.secrets/machines/<gateway>/` (gitignored,
-  owner-only): only the local replay publisher uses them.
+  on this machine, in `.secrets/machines/<region>/<gateway>/` (gitignored,
+  owner-only): only the local replay publisher uses them. A certificate
+  belongs to one region's IoT Core, so each region gets its own folder.
 - **The Sparkplug B descriptor set**, put in the stack's schema bucket,
   where the Sparkplug rule's `decode()` reads it. Uploading it here rather
   than from the stack spares the stack a custom-resource Lambda, and the
@@ -37,6 +38,16 @@ from crestline_machines.devices import (
 MACHINE_INGEST_STACK_NAME = "CrestlineMachineIngest"
 
 CERTS_DIR = Path(".secrets/machines")
+
+
+def certs_dir(region: str | None = None) -> Path:
+    """Where this region's gateway keys live: `.secrets/machines/<region>/`."""
+    region = region or boto3.Session().region_name
+    if not region:
+        raise RuntimeError("no AWS region set (AWS_REGION or the profile's)")
+    return CERTS_DIR / region
+
+
 CERTIFICATE = "certificate.pem"
 PRIVATE_KEY = "private.key"
 DETAILS = "certificate.json"
@@ -64,13 +75,14 @@ def delete_schema(bucket: str, s3=None) -> None:
 
 
 def ensure(
-    certs_dir: Path = CERTS_DIR, iot=None, gateways: tuple[str, ...] = GATEWAYS
+    keys_dir: Path | None = None, iot=None, gateways: tuple[str, ...] = GATEWAYS
 ) -> dict[str, str]:
     """A certificate for every gateway that has none here; gateway -> "created" or "kept"."""
     iot = iot or boto3.client("iot")
+    keys = keys_dir or certs_dir()
     done = {}
     for gateway in gateways:
-        folder = certs_dir / gateway
+        folder = keys / gateway
         if (folder / DETAILS).exists():
             done[gateway] = "kept"
             continue
@@ -91,10 +103,11 @@ def ensure(
 
 
 def delete(
-    certs_dir: Path = CERTS_DIR, iot=None, gateways: tuple[str, ...] = GATEWAYS
+    keys_dir: Path | None = None, iot=None, gateways: tuple[str, ...] = GATEWAYS
 ) -> dict[str, int]:
     """Detach, deactivate, and delete every gateway's certificates; gateway -> how many."""
     iot = iot or boto3.client("iot")
+    keys = keys_dir or certs_dir()
     deleted = {}
     for gateway in gateways:
         try:
@@ -108,7 +121,7 @@ def delete(
             iot.update_certificate(certificateId=certificate_id, newStatus="INACTIVE")
             iot.delete_certificate(certificateId=certificate_id)
         deleted[gateway] = len(principals)
-        folder = certs_dir / gateway
+        folder = keys / gateway
         for name in (CERTIFICATE, PRIVATE_KEY, DETAILS):
             (folder / name).unlink(missing_ok=True)
         if folder.exists():

@@ -19,6 +19,7 @@ The rule drops a payload it can't parse without a trace; so does this
 import base64
 import binascii
 import json
+import os
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -54,7 +55,9 @@ def write_rule_records(source: Path, dest: Path) -> int:
     if dest.exists() and dest.stat().st_mtime >= source.stat().st_mtime:
         return 0
     dest.parent.mkdir(parents=True, exist_ok=True)
-    partial = dest.with_suffix(".partial")
+    # Its own partial file per process: several processes reading one
+    # backfill at once each decode it, and the last to finish wins (M5 step 9).
+    partial = dest.with_suffix(f".{os.getpid()}.partial")
     count = 0
     with (
         source.open(encoding="utf-8") as lines,

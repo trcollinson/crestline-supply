@@ -25,7 +25,7 @@ ACTIONS = {
 ROLES = {"crestline-ops-analyst", "crestline-maintenance-planner"}
 
 
-def test_there_are_six_rules():
+def test_there_are_seven_rules():
     assert [p.stem for p in POLICIES] == [
         "forbid_plant_scada",
         "permit_internal_reports",
@@ -33,6 +33,7 @@ def test_there_are_six_rules():
         "permit_job_status",
         "permit_machine_reads",
         "permit_maintenance_requests",
+        "permit_scrap_by_day",  # M5
     ]
 
 
@@ -57,8 +58,9 @@ def test_each_rule_names_real_tools_and_only_the_agent_roles(path):
     assert not re.search(r"\d{12}", text)
 
 
-def test_the_machine_list_in_cedar_is_the_lambdas():
-    text = (REPO / "infra" / "policies" / "permit_machine_reads.cedar").read_text()
+@pytest.mark.parametrize("rule", ["permit_machine_reads", "permit_scrap_by_day"])
+def test_the_machine_list_in_cedar_is_the_lambdas(rule):
+    text = (REPO / "infra" / "policies" / f"{rule}.cedar").read_text()
     listed = re.search(r"\[([^\]]*)\]\.contains\(context\.input\.machine_id\)", text)
     assert tuple(json.loads(f"[{listed.group(1)}]")) == MACHINES
 
@@ -180,3 +182,27 @@ def test_the_eval_policies_name_only_the_agent_roles_and_threshold():
     assert 'greaterThan(decimal("0.5"))' in guardrail
     assert '"$..text"' in guardrail
     assert '["JAILBREAK"]' in guardrail and '["PROMPT_INJECTION"]' in guardrail
+
+
+def test_a_second_copy_of_the_stack_names_its_roles_apart_everywhere():
+    """IAM role names are account-wide, so a copy in another region (M5)
+    takes a suffix; every rule must then name the suffixed roles."""
+    plain = template()
+    suffixed = template(agentRoleSuffix="-m5")
+    for name, props in policies(suffixed).items():
+        text = json.dumps(props["Definition"])
+        if "assumed-role/" in text:
+            assert set(re.findall(r"assumed-role/([a-z0-9-]+)", text)) <= {
+                f"{role}-m5" for role in ROLES
+            }, name
+    names = {
+        r["Properties"].get("RoleName")
+        for r in suffixed.find_resources("AWS::IAM::Role").values()
+    }
+    assert {f"{role}-m5" for role in ROLES} <= names
+    assert suffixed.to_json()["Outputs"]["RoleSuffix"]["Value"] == "-m5"
+    # Without one, nothing about the deployed stack changes.
+    assert "RoleSuffix" not in plain.to_json()["Outputs"]
+    for name, props in policies(plain).items():
+        text = json.dumps(props["Definition"])
+        assert set(re.findall(r"assumed-role/([a-z0-9-]+)", text)) <= ROLES, name

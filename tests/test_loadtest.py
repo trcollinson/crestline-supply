@@ -149,7 +149,9 @@ def test_cleanup_deletes_the_certificate_and_empties_the_bucket(monkeypatch, tmp
         )
         for n in range(3):
             s3.put_object(Bucket="landing", Key=f"mode=a/{n}.jsonl", Body=b"{}")
-        monkeypatch.setattr(machine_loadtest.machine_setup, "CERTS_DIR", tmp_path)
+        monkeypatch.setattr(
+            machine_loadtest.machine_setup, "certs_dir", lambda: tmp_path
+        )
         monkeypatch.setattr(
             machine_loadtest,
             "stack_outputs",

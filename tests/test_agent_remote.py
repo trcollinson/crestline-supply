@@ -2,7 +2,8 @@
 
 Each read tool, called from the laptop as `crestline-ops-analyst`, must give
 the same rows as the same SQL file run in DuckDB over ./out with the same
-parameters. The writes must land in the stub CMMS and the outbox, each made
+parameters (or over CRESTLINE_OUT, the backfill the stacks hold: out-m5 in
+M5's region). The writes must land in the stub CMMS and the outbox, each made
 by the role the policies let make it (step 4). The honeypot must log every
 call that reaches it under LOG_ONLY, and under ENFORCE never be invoked.
 Which rule decides which call is test_policies_remote.py's subject.
@@ -33,6 +34,8 @@ READS = [
     ("machine_downtime", {"machine_id": "PC-LINE", "days": 7, "as_of": "2026-08-14"}),
     ("cycles_by_day", {"machine_id": "PB-02", "days": 31}),
     ("cycles_by_day", {"machine_id": "PEM-01", "days": 31, "as_of": "2026-08-02"}),
+    ("scrap_by_day", {"machine_id": "LSR-01", "days": 31, "as_of": "2026-08-31"}),
+    ("scrap_by_day", {"machine_id": "PB-02", "days": 31}),
     ("job_margin", {"days": 31}),
     ("job_margin", {"days": 31, "as_of": "2026-08-15"}),
 ]

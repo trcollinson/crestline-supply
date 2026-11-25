@@ -164,6 +164,14 @@ class UvBundle:
                 "--only-binary=:all:",
                 "--quiet",
             )
+        # uv writes this checkout's own venv path into each console script's
+        # first line (and their hashes into RECORD), so the package, and the
+        # asset hash CDK takes of it, would differ from one checkout to the
+        # next with no change in what runs (M5 step 2). Lambda never runs a
+        # console script, and nothing at runtime reads RECORD.
+        shutil.rmtree(out / "bin", ignore_errors=True)
+        for record in out.glob("*.dist-info/RECORD"):
+            record.unlink()
         shutil.copytree(
             REPO_ROOT / "interfaces/erp-api/src/crestline_erp_api",
             out / "crestline_erp_api",

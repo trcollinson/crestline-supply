@@ -42,7 +42,7 @@ from .records import (
     ScrapCause,
     SimulationResult,
 )
-from .scenarios import Scenarios, SetupMultiplier
+from .scenarios import MachineWear, Scenarios, SetupMultiplier
 from .shifts import ShiftCalendar, Window
 
 SimSteps = Generator[simpy.Event, object, object]
@@ -58,11 +58,13 @@ class Plant:
         seed: int,
         config: PlantConfig | None = None,
         setup_multiplier: SetupMultiplier | None = None,
+        wear: MachineWear | None = None,
     ) -> None:
         self.reference = reference
         self.jobs = list(jobs)
         self.config = config or PlantConfig()
         self.setup_multiplier = setup_multiplier
+        self.wear = wear
 
         for job in self.jobs:
             if not first_day <= job.release_date <= last_day:
@@ -77,6 +79,8 @@ class Plant:
         )
         self.env = simpy.Environment()
         self.rng = make_rng(seed, stream="plant")
+        if self.wear is not None:
+            self.wear.plan(self.calendar.working_days)
 
         self.machines = {
             wc.machine_id: Machine(
@@ -291,6 +295,28 @@ class Plant:
 
         while produced < qty:
             window = yield from self._wait_for_window()
+            repair_seconds = (
+                self.wear.repair_due(machine.machine_id, window.local_date)
+                if self.wear is not None
+                else None
+            )
+            if repair_seconds is not None:
+                # A planned fix, not a random breakdown: it draws nothing on
+                # the plant stream and leaves the next breakdown where it was.
+                yield from self._work(
+                    machine,
+                    repair_seconds,
+                    MachineState.DOWN,
+                    DowntimeReason.MAINTENANCE,
+                    op_record,
+                )
+                assert self.wear is not None
+                self.wear.repaired(
+                    machine.machine_id,
+                    self.clock.to_utc(self.env.now),
+                    self.clock.to_local(self.env.now).date(),
+                )
+                continue
             employee_id = self.roster.employee_for(
                 machine.machine_id, window.shift, window.local_date
             )
@@ -310,7 +336,10 @@ class Plant:
                 t += cycle
                 run_since_downtime += cycle
                 first_piece = after_setup and produced + len(pieces) == 0
-                pieces.append((t, self._judge_piece(first_piece)))
+                cause = self._judge_piece(first_piece)
+                if cause is None and self.wear is not None:
+                    cause = self.wear.extra_scrap(machine.machine_id, window.local_date)
+                pieces.append((t, cause))
 
             if pieces:
                 yield self.env.timeout(t - start)
@@ -333,6 +362,10 @@ class Plant:
                         good += 1
                     else:
                         scrap += 1
+                    if self.wear is not None:
+                        self.wear.count_piece(
+                            machine.machine_id, window.local_date, cause is not None
+                        )
                 produced += len(pieces)
 
             if downtime_due:
@@ -467,7 +500,14 @@ def simulate(
     a plant with no hidden stories in it.
     """
     job_list = jobs.jobs if isinstance(jobs, GeneratedJobs) else list(jobs)
-    setup_multiplier = scenarios.setup_multiplier() if scenarios is not None else None
-    return Plant(
-        reference, job_list, first_day, last_day, seed, config, setup_multiplier
+    setup_multiplier = None
+    wear = None
+    if scenarios is not None:
+        setup_multiplier = scenarios.setup_multiplier()
+        wear = scenarios.laser_nozzle_degradation.wear(seed, first_day)
+    result = Plant(
+        reference, job_list, first_day, last_day, seed, config, setup_multiplier, wear
     ).run()
+    if wear is not None:
+        result.events = wear.events(last_day)
+    return result

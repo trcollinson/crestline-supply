@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -120,17 +121,20 @@ def duckdb_run():
 
     `run(sql_name, parameters)` runs pipelines/agent_tools/sql/<name>.sql with
     the parameters, as the Lambda runs it on Athena; `run.con` is the
-    connection, with the margin and downtime views built.
+    connection, with the margin, downtime, and scrap views built.
     """
     from agent_tools import athena
     from crestline import query
 
     repo = Path(__file__).resolve().parent.parent
-    out = repo / "out"
+    # The backfill the deployed stacks hold: ./out, or CRESTLINE_OUT=out-m5
+    # for M5's (the laser nozzle on), in us-east-1.
+    out = repo / os.environ.get("CRESTLINE_OUT", "out")
     if not (out / "mes" / "outbound").exists():
-        pytest.skip("needs the 90-day backfill in ./out")
+        pytest.skip(f"needs the 90-day backfill in {out}")
     con = query.connect(out, repo / "queries")
     query.run(con, "downtime", repo / "queries").fetchall()
+    query.run(con, "scrap", repo / "queries").fetchall()  # M5
 
     def run(name: str, parameters: list) -> list[dict]:
         result = con.execute(athena.sql(name), parameters)
@@ -142,3 +146,24 @@ def duckdb_run():
 
     run.con = con
     return run
+
+
+@pytest.fixture(scope="session")
+def m5_out(tmp_path_factory) -> Path:
+    """M5's backfill: 90 days, the laser nozzle on (the brief's tests share it)."""
+    import contextlib
+    import io
+
+    from crestline.cli import main
+
+    out = tmp_path_factory.mktemp("m5")
+    with pytest.MonkeyPatch.context() as mp, contextlib.redirect_stdout(io.StringIO()):
+        mp.chdir(REFERENCE_DIR.parent)
+        main(
+            [
+                "sim", "backfill", "--days", "90", "--end", "2026-10-01",
+                "--seed", "42", "--out", str(out),
+                "--scenarios", "eval/scenarios_nozzle.yaml",
+            ]
+        )  # fmt: skip
+    return out

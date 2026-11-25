@@ -204,6 +204,25 @@ def test_cycles_by_day_adds_up_to_the_machine_view(duckdb_run):
     assert sum(r["cycles"] for r in got["rows"]) == total > 0
 
 
+def test_scrap_by_day_is_the_scrap_view_for_one_machine(duckdb_run):
+    got = plant_data.answer(
+        "scrap_by_day",
+        {"machine_id": "LSR-01", "days": 7, "as_of": "2026-09-30"},
+        duckdb_run,
+    )
+    expected = duckdb_run.con.sql(
+        "select work_date, pieces, scrapped, erp_scrapped from scrap_by_day"
+        " where machine_id = 'LSR-01'"
+        " and work_date between date '2026-09-24' and date '2026-09-30'"
+        " order by work_date"
+    ).fetchall()
+    assert [
+        (r["work_date"], r["pieces"], r["scrapped"], r["erp_scrapped"])
+        for r in got["rows"]
+    ] == [(str(d), p, s, e) for d, p, s, e in expected]
+    assert expected and got["rows"][-1]["erp_scrapped"] is None  # not posted yet
+
+
 def test_machine_downtime_gives_plant_time_beside_utc(duckdb_run):
     got = plant_data.answer(
         "machine_downtime",

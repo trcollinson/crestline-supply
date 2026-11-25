@@ -2,8 +2,9 @@
 
 FoundationStack (infra/stacks/foundation.py) publishes the names of the raw
 bucket, the Glue database, and the Athena workgroup; ErpApiStack the ERP
-API's URL and client ID; CuratedStack the curated tables' database; and
-ErpIngestStack the poller's state table. So nothing here guesses a name or
+API's URL and client ID; CuratedStack the curated tables' database;
+ErpIngestStack the poller's state table; and BriefStack the brief's bucket,
+topic, and function (M5). So nothing here guesses a name or
 hardcodes an account. Account and region come from the AWS environment
 (`AWS_PROFILE`, `AWS_REGION`), like the CDK CLI's.
 """
@@ -14,6 +15,7 @@ STACK_NAME = "CrestlineFoundation"  # infra/app.py
 ERP_API_STACK_NAME = "CrestlineErpApi"
 CURATED_STACK_NAME = "CrestlineCurated"
 ERP_INGEST_STACK_NAME = "CrestlineErpIngest"
+BRIEF_STACK_NAME = "CrestlineBrief"
 
 
 def foundation_outputs(cloudformation=None) -> dict[str, str]:

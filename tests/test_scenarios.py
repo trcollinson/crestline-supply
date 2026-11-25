@@ -32,9 +32,9 @@ def test_repo_scenarios_file_enables_the_pb02_story():
 
 def test_unknown_scenario_id_is_rejected(tmp_path):
     bad = tmp_path / "scenarios.yaml"
-    bad.write_text("laser_nozzle_degradation:\n  enabled: true\n")
+    bad.write_text("oven_zone3_drift:\n  enabled: true\n")
 
-    with pytest.raises(ValidationError, match="laser_nozzle_degradation"):
+    with pytest.raises(ValidationError, match="oven_zone3_drift"):
         load_scenarios(bad)
 
 

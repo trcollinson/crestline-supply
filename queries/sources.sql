@@ -30,6 +30,7 @@ create or replace view erp_jobs              as select * rename (LastModified as
 create or replace view erp_sales_order_lines as select * rename (LastModified as lastmodified_utc) from read_json('erp/export/SalesOrderLines.jsonl');
 create or replace view erp_job_operations    as select * rename (LastModified as lastmodified_utc) from read_json('erp/export/JobOperations.jsonl');
 create or replace view erp_job_costs         as select * rename (LastModified as lastmodified_utc) from read_json('erp/export/JobCosts.jsonl');
+create or replace view erp_labor_details     as select * rename (LastModified as lastmodified_utc) from read_json('erp/export/LaborDetails.jsonl');
 
 
 -- MES: the nightly labor files. Timestamps are plant local time with no

@@ -268,3 +268,73 @@ def test_revenue_is_the_order_not_the_overs(con):
     assert (rows["revenue"] <= rows["OrderQty"] * rows["UnitPrice"] + 1e-6).all()
     assert (rows["CompletedQty"] > rows["OrderQty"]).any()  # overs go to stock...
     assert (rows["CompletedQty"] < rows["OrderQty"]).any()  # ...and shorts ship short
+
+
+@pytest.fixture(scope="module")
+def scrap(con) -> pl.DataFrame:
+    """scrap.sql's view (M5 step 2), after margin_gap.sql's, which it reuses."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.chdir(REPO_ROOT)
+        query.run(con, "scrap").fetchall()
+    return con.sql("select * from scrap_by_day").pl()
+
+
+def test_scrap_by_day_is_the_pieces_each_machine_really_made_and_scrapped(scrap, out):
+    """Every piece once, on its machine and plant day, as the answer key has it.
+
+    A scan holds one shift's pieces and is dated by when it opened, so
+    away from the brakes the counts are exact. The brakes are as right as
+    margin_gap.sql's attribution, which places all but a few operations right.
+    Except the last day: a scan left open that night is closed at 06:00 the
+    next morning, after the extract, so it is in no file yet.
+    """
+    truth = (
+        pl.read_parquet(out / "truth" / "truth_cycles.parquet")
+        .with_columns(
+            work_date=pl.col("completed_at")
+            .dt.convert_time_zone("America/Denver")
+            .dt.date()
+        )
+        .group_by("machine_id", "work_date")
+        .agg(pieces=pl.len(), scrapped=(~pl.col("good")).sum())
+    )
+    last_day = scrap["work_date"].max()
+    both = truth.join(
+        scrap.select("machine_id", "work_date", "pieces", "scrapped"),
+        on=["machine_id", "work_date"],
+        how="full",
+        suffix="_mes",
+        coalesce=True,
+    ).fill_null(0)
+    assert last_day == both["work_date"].max()
+    both = both.filter(pl.col("work_date") < last_day)
+    stations = both.filter(~pl.col("machine_id").is_in(["PB-01", "PB-02"]))
+    assert set(stations["machine_id"]) == {
+        "LSR-01", "DB-01", "PEM-01", "PC-LINE", "AS-01"
+    }  # fmt: skip
+    assert (stations["pieces"] == stations["pieces_mes"]).all()
+    assert (stations["scrapped"] == stations["scrapped_mes"]).all()
+    brakes = both.filter(pl.col("machine_id").is_in(["PB-01", "PB-02"]))
+    assert brakes["pieces"].sum() == brakes["pieces_mes"].sum()
+    off = brakes.filter(pl.col("pieces") != pl.col("pieces_mes"))
+    assert len(off) <= 0.05 * len(brakes), off
+
+
+def test_the_erp_posts_the_same_scrap_a_night_later(scrap):
+    """The cross-check: the ERP's LaborDetails agree with the MES on every day
+    the nightly batch has posted, and the last day hasn't been posted yet."""
+    posted = scrap.filter(pl.col("erp_scrapped").is_not_null())
+    assert (posted["erp_scrapped"] == posted["scrapped"]).all()
+    last_day = scrap["work_date"].max()
+    assert posted["work_date"].max() < last_day
+    assert scrap.filter(pl.col("erp_scrapped").is_null())[
+        "work_date"
+    ].unique().to_list() == [last_day]
+
+
+def test_cli_prints_the_weekly_scrap(out, capsys):
+    with pytest.MonkeyPatch.context() as mp:
+        mp.chdir(REPO_ROOT)
+        main(["query", "scrap", "--out", str(out)])
+    printed = capsys.readouterr().out
+    assert "LSR-01" in printed and "week_of" in printed

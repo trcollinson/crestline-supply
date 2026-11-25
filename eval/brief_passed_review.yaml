@@ -1,0 +1,507 @@
+# The briefs that went out under the final prompt, read for what the number
+# check can't see (M5 step 9): eval/brief_passed.py checks this file
+# against the logs and counts it.
+#
+# One entry per brief that went out (nova-v2 46, sonnet-v2 38), keyed to its
+# log; each finding quotes the brief as the log holds it. Verdicts: wrong (a
+# fact contradicts it), invented (a claim no fact supports), cause (a cause,
+# explanation, advice, or action the facts don't give), status (an alert's
+# new/open label or since-date against the ledger's): each misleading. minor:
+# worth a note, misleads no one.
+#
+# How it was read: alert statuses by script first (`brief_passed.py
+# statuses`: 104 alert mentions, none mislabelled, four unclear read by hand).
+# Then a first read of every brief by four reviewers (Claude subagents, one
+# rubric, eval/brief_passed_rubric.md, each brief beside the facts the model
+# was given). Every quote is checked against the log by machine, and every
+# finding was then checked by hand against the facts, which changed these:
+#   minor -> wrong: Nova's alert lines that write PB-02 2nd shift's gap against
+#     "PB-02" (Jul 8, 17, 23, Aug 3, 4, 12), as the reviewers had already ruled
+#     for the same thing in margin bullets; Sonnet's two self-corrections
+#     (Jul 10 "wait —", Sep 28 "baseline 598... baseline 544"), as the refused
+#     Aug 10 brief's "wait, 0.9%" was ruled.
+#   minor -> invented: Sonnet Aug 21's ⚠ on LSR-01's stops (its alert is scrap),
+#     as Sep 9's ⚠ on LSR-01 was ruled.
+#   wrong -> minor: Nova Jul 30 "0 recorded stop minutes" and Aug 18 "no stops
+#     at all": true of the machine data, as Jul 16's "no stops" was left.
+#   dropped: "ERP uses standard hours" (Sep 25), "ERP closes jobs nightly"
+#     (Sep 8, 9): the model was told both (the glossary, the margin window's note).
+# Rule for an alert or margin line that drops the shift: a number written
+# against the bare machine is wrong; a line naming no machine is minor.
+
+out: out-m5
+briefs:
+- {model: nova-v2, morning: 2026-07-06, log: 20261120T224033Z-2026-07-06-nova.jsonl, findings: []}
+- {model: nova-v2, morning: 2026-07-07, log: 20261120T224033Z-2026-07-07-nova.jsonl, findings: []}
+- model: nova-v2
+  morning: 2026-07-08
+  log: 20261120T224033Z-2026-07-08-nova.jsonl
+  findings:
+  - {quote: "One new alert for Plant Board PB-02: ERP margin above rebuilt margin by 4.5 points, threshold 3.0 points",
+     verdict: wrong, fact: "anomaly:PB-02 1st:erp_margin_above_rebuilt = 4.5 (New)",
+     note: "The alert that day was PB-02 1st shift's (4.5 points); the brief drops the shift and calls the press brake a 'Plant Board', so the manager reads it as the whole machine's."}
+- model: nova-v2
+  morning: 2026-07-10
+  log: 20261120T224037Z-2026-07-10-nova.jsonl
+  findings:
+  - {quote: "PB-01 and ASSY had no stops",
+     verdict: invented, fact: "none (no stops facts exist for ASSY/AS-01)",
+     note: "The manager would believe assembly had no stops, but the facts hold no stop data for ASSY at all; only PB-01's 0 stops is supported."}
+  - {quote: "**Stops:**",
+     verdict: minor, fact: "margin:all jobs:* (79 jobs, ERP 19.6%, rebuilt 20.2%)",
+     note: "The brief has no Margin section although margin facts were given; it goes straight from Output to Stops."}
+- model: nova-v2
+  morning: 2026-07-13
+  log: 20261120T224037Z-2026-07-13-nova.jsonl
+  findings:
+  - {quote: "New alert: ERP margin above rebuilt by 3.2 percentage points",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 3.2 (New)",
+     note: "The alert text never names PB-02 or the 2nd shift, so once citations are stripped the manager cannot tell which brake and shift it is about."}
+- model: nova-v2
+  morning: 2026-07-16
+  log: 20261120T224041Z-2026-07-16-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: ERP margin above rebuilt margin by 4.3 points, above the 3.0-point threshold, still open since 2026-07-10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 4.3 (Still open since 2026-07-10)",
+     note: "The alert text never names PB-02 2nd shift; the subject is only in the citation."}
+  - {quote: "For PB-01, the ERP margin was 21.5 percent and the rebuilt margin was 23.6 percent",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct 21.5, rebuilt 23.6; margin:PB-01 2nd:erp_margin_pct 24.7, rebuilt 27.2",
+     note: "The manager would read these as PB-01's margins, but they are its 1st shift only; the 2nd shift's are 24.7 and 27.2."}
+  - {quote: "For PB-02, the ERP margin was 23.2 percent and the rebuilt margin was 18.9 percent",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct 23.2, rebuilt 18.9; margin:PB-02 1st:erp_margin_pct 18.3, rebuilt 20.2",
+     note: "The manager would read PB-02 as a whole showing ERP above rebuilt, but these are the 2nd shift's numbers; PB-02's 1st shift shows the reverse (18.3 vs 20.2)."}
+- model: nova-v2
+  morning: 2026-07-17
+  log: 20261120T224041Z-2026-07-17-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: ERP margin above rebuilt margin for PB-02, at 4.6 points, above the 3.0-point threshold",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 4.6 (Still open since 2026-07-10)",
+     note: "The alert's gap is PB-02 2nd shift's, written against the whole machine; PB-02 1st shift's gap that day was -1.7."}
+- model: nova-v2
+  morning: 2026-07-21
+  log: 20261120T224044Z-2026-07-21-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: ERP margin above rebuilt margin by 5.1 points, above the 3.0-point threshold, ongoing since July 10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.1 (Still open since 2026-07-10)",
+     note: "The alert text never names PB-02 2nd shift; the subject is only in the citation."}
+  - {quote: "Stop minutes recorded: 112 minutes on LSR-01 (16 minutes of stops)",
+     verdict: minor, fact: "stops:LSR-01:logged_minutes 112; stops:LSR-01:stop_minutes 16",
+     note: "Garbled: the line headed 'Stop minutes' leads with the 112 logged minutes and puts the machine's 16 stop minutes in parentheses, readable as true only if 'recorded' means logged."}
+- model: nova-v2
+  morning: 2026-07-23
+  log: 20261120T224045Z-2026-07-23-nova.jsonl
+  findings:
+  - {quote: "**Still open since 2026-07-10**: PB-02 ERP margin above rebuilt, value 5.1 points, threshold 3.0 points",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.1",
+     note: "The alert's gap is PB-02 2nd shift's, written against the whole machine; PB-02 1st shift's gap that day was -1.8."}
+  - {quote: "**AS-01**: 1 percent scrap, 1 scrapped piece",
+     verdict: wrong, fact: "scrap:AS-01:scrap_pct 0.2 (baseline 1.1)",
+     note: "The manager would believe AS-01 scrapped 1% of its pieces; the fact is 0.2%, which does not round to 1."}
+  - {quote: "**PB-01 first period**",
+     verdict: minor, fact: "margin:PB-01 1st:*",
+     note: "The shifts are called 'first period' and 'second period', which could be read as time periods rather than 1st and 2nd shift."}
+- model: nova-v2
+  morning: 2026-07-28
+  log: 20261120T224049Z-2026-07-28-nova.jsonl
+  findings:
+  - {quote: "One alert is active: PB-02 2nd:erp_margin_above_rebuilt is still open since 2026-07-10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.2 (Still open since 2026-07-10)",
+     note: "The alert is given as a raw fact ID with no value or plain-language description."}
+- model: nova-v2
+  morning: 2026-07-29
+  log: 20261120T224049Z-2026-07-29-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: ERP margin above rebuilt margin by 5.2 percentage points, above the 3.0-point threshold, ongoing since 2026-07-10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.2 (Still open since 2026-07-10)",
+     note: "The alert text never names PB-02 2nd shift; the subject is only in the citation."}
+  - {quote: "For PB-01, the ERP margin was 23.2 percent and the rebuilt margin was 24.8 percent",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct 23.2, rebuilt 24.8; margin:PB-01 2nd:erp_margin_pct 28.3, rebuilt 29.9",
+     note: "The manager would read these as PB-01's margins, but they are its 1st shift only; the 2nd shift's are 28.3 and 29.9."}
+  - {quote: "For PB-02, the ERP margin was 21.7 percent and the rebuilt margin was 16.5 percent",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct 21.7, rebuilt 16.5; margin:PB-02 1st:erp_margin_pct 21.0, rebuilt 21.7",
+     note: "The manager would read PB-02 as a whole at 21.7 vs 16.5, but these are the 2nd shift's; the 1st shift's rebuilt margin is above its ERP margin."}
+- model: nova-v2
+  morning: 2026-07-30
+  log: 20261120T224050Z-2026-07-30-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: PB-02 2nd:erp_margin_above_rebuilt, at 5.5 points, above the 3.0-point threshold",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.5 (Still open since 2026-07-10)",
+     note: "The alert is given as a raw fact ID and without its 'since 2026-07-10' date."}
+  - {quote: "For PB-01, the ERP margin was 23.4 percent, and the rebuilt margin was 25.0 percent",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct 23.4, rebuilt 25.0; margin:PB-01 2nd:erp_margin_pct 28.2, rebuilt 29.6",
+     note: "The manager would read these as PB-01's margins, but they are its 1st shift only; the 2nd shift's are 28.2 and 29.6."}
+  - {quote: "For PB-02, the ERP margin was 21.2 percent, and the rebuilt margin was 15.7 percent",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct 21.2, rebuilt 15.7; margin:PB-02 1st:erp_margin_pct 21.5, rebuilt 22.1",
+     note: "The manager would read PB-02 as a whole at 21.2 vs 15.7, but these are the 2nd shift's; the 1st shift's rebuilt margin is above its ERP margin."}
+  - {quote: "PEM-01 had 1 logged stop but 0 recorded stop minutes",
+     verdict: minor, fact: "stops:PEM-01:logged_minutes 26; stops:PEM-01:stop_minutes 0",
+     note: "True of the machine data (stop_minutes 0), but beside the operators' log of 1 stop it reads as if the log had 0 minutes; the log has 26."}
+- model: nova-v2
+  morning: 2026-08-03
+  log: 20261120T224052Z-2026-08-03-nova.jsonl
+  findings:
+  - {quote: "One alert is still open: ERP margin above rebuilt margin for PB-02, at 5.5 points, above the 3.0-point threshold",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.5 (Still open since 2026-07-10)",
+     note: "The alert's gap is PB-02 2nd shift's, written against the whole machine; PB-02 1st shift's gap that day was -1.0."}
+- model: nova-v2
+  morning: 2026-08-04
+  log: 20261120T224052Z-2026-08-04-nova.jsonl
+  findings:
+  - {quote: "**Still open since 2026-07-10**: PB-02 ERP margin above rebuilt, value 5.9 points, threshold 3.0 points",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.9",
+     note: "The alert's gap is PB-02 2nd shift's, written against the whole machine; PB-02 1st shift's gap that day was -1.1."}
+  - {quote: "**PB-01**: ERP margin 21.8 percent, rebuilt margin 23.9 percent, gap -2.2 points, 81 jobs, setup vs standard 1.07",
+     verdict: wrong, fact: "margin:PB-01 1st:* (21.8, 23.9, -2.2, 81, 1.07); margin:PB-01 2nd: ERP 26.3, rebuilt 28.8, 88 jobs",
+     note: "The manager would read these as PB-01's figures, but they are its 1st shift only; the 2nd shift ran 88 more jobs at 26.3 and 28.8."}
+  - {quote: "**PB-02**: ERP margin 21.1 percent, rebuilt margin 15.2 percent, gap 5.9 points, 56 jobs, setup vs standard 2.82",
+     verdict: wrong, fact: "margin:PB-02 2nd:* (21.1, 15.2, 5.9, 56, 2.82); margin:PB-02 1st: gap -1.1, setup 1.18, 86 jobs",
+     note: "The manager would read PB-02 as a whole with a 5.9-point gap and setups at 2.82x, but these are the 2nd shift's; the 1st shift's gap is -1.1 and setups 1.18x."}
+- model: nova-v2
+  morning: 2026-08-05
+  log: 20261120T224053Z-2026-08-05-nova.jsonl
+  findings:
+  - {quote: "**Still open**: ERP margin above rebuilt for PB-02",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.7 (Still open since 2026-07-10)",
+     note: "The alert drops the 2nd shift, its value, and its 'since 2026-07-10' date."}
+- model: nova-v2
+  morning: 2026-08-06
+  log: 20261120T224055Z-2026-08-06-nova.jsonl
+  findings:
+  - {quote: "**anomaly:PB-02 2nd:erp_margin_above_rebuilt** is still open since 2026-07-10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.7 (Still open since 2026-07-10)",
+     note: "The alert is given as a raw fact ID with no value or plain-language description."}
+  - {quote: "**PB-01** second period ERP margin was **26.5** percent",
+     verdict: minor, fact: "margin:PB-01 2nd:*",
+     note: "The 2nd shift is called 'second period', which could be read as a time period rather than a shift."}
+- model: nova-v2
+  morning: 2026-08-10
+  log: 20261120T224057Z-2026-08-10-nova.jsonl
+  findings:
+  - {quote: "One alert is active: PB-02 2nd:erp_margin_above_rebuilt is open since at least 2026-07-10",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 6.6 (Open since at least 2026-07-10)",
+     note: "The alert is given as a raw fact ID with no value or plain-language description."}
+- model: nova-v2
+  morning: 2026-08-12
+  log: 20261120T224059Z-2026-08-12-nova.jsonl
+  findings:
+  - {quote: "**Open alert**: PB-02 ERP margin above rebuilt, at 5.3 points, above the 3.0-point threshold, open since at least 2026-07-14",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.3",
+     note: "The alert's gap is PB-02 2nd shift's, written against the whole machine; PB-02 1st shift's gap that day was -0.6."}
+- model: nova-v2
+  morning: 2026-08-13
+  log: 20261120T224100Z-2026-08-13-nova.jsonl
+  findings:
+  - {quote: "**anomaly:PB-02 2nd:erp_margin_above_rebuilt** is open since at least 2026-07-15",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.3 (Open since at least 2026-07-15)",
+     note: "The alert is given as a raw fact ID with no value or plain-language description."}
+- model: nova-v2
+  morning: 2026-08-14
+  log: 20261120T224101Z-2026-08-14-nova.jsonl
+  findings:
+  - {quote: "**Open alert**: ERP margin on PB-02 2nd is 5.6 points above rebuilt margin",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.6 (Open since at least 2026-07-16)",
+     note: "The alert is given without its 'open since at least 2026-07-16' date."}
+- model: nova-v2
+  morning: 2026-08-18
+  log: 20261120T224104Z-2026-08-18-nova.jsonl
+  findings:
+  - {quote: "The scrap rate on LSR-01 is still high",
+     verdict: minor, fact: "anomaly:LSR-01:scrap_above_baseline = 12.1 SE, threshold 3.5 (Still open since 2026-08-13)",
+     note: "The alert says 'still' but gives no value and not its 'since 2026-08-13' date."}
+  - {quote: "The ERP margin on PB-02 2nd is still far above the rebuilt margin",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 5.8 (Open since at least 2026-07-20)",
+     note: "The alert gives no value and not its 'open since at least 2026-07-20' date."}
+  - {quote: "PC-LINE had many more stop minutes than usual today",
+     verdict: minor, fact: "anomaly:PC-LINE:stop_minutes_above_usual = 109, threshold 15 (New)",
+     note: "The new alert is not called new (and is listed after the open ones), and the plant day, Monday Aug 17, is called 'today'."}
+  - {quote: "PC-LINE had two stops, one for 109 minutes",
+     verdict: wrong, fact: "stops:PC-LINE:stops 2; stops:PC-LINE:stop_minutes 109",
+     note: "The manager would believe a single stop lasted 109 minutes, but 109 is the total of both stops."}
+  - {quote: "LSR-01 had no stops at all",
+     verdict: minor, fact: "stops:LSR-01:stops 0; stops:LSR-01:logged_stops 1, logged_minutes 18",
+     note: "True of the machine data (stops 0); the operators' log holds one 18-minute stop, which the brief doesn't mention."}
+- model: nova-v2
+  morning: 2026-08-19
+  log: 20261120T224105Z-2026-08-19-nova.jsonl
+  findings:
+  - {quote: "PB-01 2nd ERP margin **20.6%**, rebuilt margin **14.8%**, gap **5.8** points",
+     verdict: wrong, fact: "margin:PB-02 2nd: ERP 20.6, rebuilt 14.8, gap 5.8; margin:PB-01 2nd: ERP 23.8, rebuilt 26.8, gap -3.0",
+     note: "The manager would believe PB-01's 2nd shift has a 5.8-point gap, but these are PB-02 2nd's numbers; PB-01 2nd's gap is -3.0."}
+- model: nova-v2
+  morning: 2026-08-20
+  log: 20261120T224105Z-2026-08-20-nova.jsonl
+  findings:
+  - {quote: "**Open alerts**: scrap above baseline on LSR-01, ERP margin above rebuilt on PB-02 2nd",
+     verdict: minor, fact: "anomaly:LSR-01:scrap_above_baseline (Still open since 2026-08-13); anomaly:PB-02 2nd:erp_margin_above_rebuilt (Open since at least 2026-07-22)",
+     note: "The open alerts are given without values or their since-dates."}
+  - {quote: "### Stops",
+     verdict: minor, fact: "scrap:* (LSR-01 10.7% against 2.6%)",
+     note: "The brief has no Scrap section, though the laser's scrap alert is open; it ends after Stops."}
+- {model: nova-v2, morning: 2026-08-21, log: 20261120T224106Z-2026-08-21-nova.jsonl, findings: []}
+- {model: nova-v2, morning: 2026-08-24, log: 20261120T224108Z-2026-08-24-nova.jsonl, findings: []}
+- model: nova-v2
+  morning: 2026-08-25
+  log: 20261120T224108Z-2026-08-25-nova.jsonl
+  findings:
+  - {quote: "For PB-02 second period, ERP margin is 20.8 percent",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 20.8",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-08-27
+  log: 20261120T224110Z-2026-08-27-nova.jsonl
+  findings:
+  - {quote: "**PB-01**: ERP margin is 21.4 percent, rebuilt margin is 23.1 percent, gap is -1.7 points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 21.4, rebuilt 23.1, gap -1.7 (PB-01 2nd: 21.1, 24.1, -3.1)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "**PB-02**: ERP margin is 18.7 percent, rebuilt margin is 12.9 percent, gap is 5.8 points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 18.7, rebuilt 12.9, gap 5.8 (PB-02 1st: 25.9, 26.2, -0.3)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- {model: nova-v2, morning: 2026-08-31, log: 20261120T224113Z-2026-08-31-nova.jsonl, findings: []}
+- {model: nova-v2, morning: 2026-09-01, log: 20261120T224114Z-2026-09-01-nova.jsonl, findings: []}
+- {model: nova-v2, morning: 2026-09-02, log: 20261120T224114Z-2026-09-02-nova.jsonl, findings: []}
+- model: nova-v2
+  morning: 2026-09-03
+  log: 20261120T224115Z-2026-09-03-nova.jsonl
+  findings:
+  - {quote: "For **PB-01**, the ERP margin is 22.4 percent, the rebuilt margin is 23.7 percent, and the gap is **-1.3** points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 22.4, rebuilt 23.7, gap -1.3 (PB-01 2nd: 20.5, 23.4, -2.9)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For **PB-02**, the ERP margin is 18.5 percent, the rebuilt margin is 12.6 percent, and the gap is **5.9** points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 18.5, rebuilt 12.6, gap 5.9 (PB-02 1st: 25.9, 25.8, 0.1)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-04
+  log: 20261120T224117Z-2026-09-04-nova.jsonl
+  findings:
+  - {quote: "The ERP margin for PB-02 in the second period is 6.1 points above the rebuilt margin, above the 3.0-point threshold",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt status 'Open since at least 2026-08-06'",
+     note: "The alert is given without its status, so the manager can't tell it has been open since at least 2026-08-06."}
+  - {quote: "For PB-02 in the second period, the ERP margin is 17.2 percent",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 17.2",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-09-07
+  log: 20261120T224117Z-2026-09-07-nova.jsonl
+  findings:
+  - {quote: "One alert is active: ERP margin above rebuilt margin by 6.4 percentage points, above the 3.0-point threshold",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 6.4",
+     note: "The alert's text never names PB-02 2nd shift (only the citation does), so read without the IDs it could be taken as plant-wide; the all-jobs gap is -1.2."}
+  - {quote: "For PB-02 in the second period, ERP margin was 15.8 percent",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 15.8",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-09-09
+  log: 20261120T224120Z-2026-09-09-nova.jsonl
+  findings:
+  - {quote: "**anomaly:PB-02 2nd:erp_margin_above_rebuilt**: 8.7 points above threshold of 3.0 points, open since at least 2026-08-11.",
+     verdict: wrong, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt = 8.7, threshold 3.0",
+     note: "Reads as the alert exceeding its threshold by 8.7 points; 8.7 is the ERP-over-rebuilt gap itself, which is 5.7 points above the 3.0 threshold."}
+- {model: nova-v2, morning: 2026-09-10, log: 20261120T224122Z-2026-09-10-nova.jsonl, findings: []}
+- model: nova-v2
+  morning: 2026-09-11
+  log: 20261120T224122Z-2026-09-11-nova.jsonl
+  findings:
+  - {quote: "For PB-01, ERP margin is 21.7 percent, rebuilt margin is 23.6 percent, and the gap is -1.9 points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 21.7, rebuilt 23.6, gap -1.9 (PB-01 2nd: 20.4, 22.1, -1.7)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For PB-02, ERP margin is 12.1 percent, rebuilt margin is 3.4 percent, and the gap is 8.7 points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 12.1, rebuilt 3.4, gap 8.7 (PB-02 1st: 27.2, 27.8, -0.6)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-14
+  log: 20261120T224122Z-2026-09-14-nova.jsonl
+  findings:
+  - {quote: "For PB-01, ERP margin is 21.8 percent, rebuilt margin is 23.8 percent, and the gap is -2.0 points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 21.8, rebuilt 23.8, gap -2.0 (PB-01 2nd: 21.4, 23.3, -1.9)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For PB-02, ERP margin is 14.0 percent, rebuilt margin is 6.2 percent, and the gap is 7.8 points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 14.0, rebuilt 6.2, gap 7.8 (PB-02 1st: 25.7, 26.5, -0.8)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-15
+  log: 20261120T224124Z-2026-09-15-nova.jsonl
+  findings:
+  - {quote: "For **PB-01**, the ERP margin was 22.1 percent, the rebuilt margin was 24.2 percent, and the gap was –2.1 points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 22.1, rebuilt 24.2, gap -2.1 (PB-01 2nd: 19.9, 21.1, -1.2)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For **PB-02**, the ERP margin was 12.4 percent, the rebuilt margin was 1.0 percent, and the gap was 11.4 points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 12.4, rebuilt 1.0, gap 11.4 (PB-02 1st: 25.9, 26.2, -0.3)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- {model: nova-v2, morning: 2026-09-16, log: 20261120T224125Z-2026-09-16-nova.jsonl, findings: []}
+- model: nova-v2
+  morning: 2026-09-18
+  log: 20261120T224127Z-2026-09-18-nova.jsonl
+  findings:
+  - {quote: "For PB-01, ERP margin was 20.6 percent and rebuilt margin was 22.1 percent, a gap of -1.6 points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 20.6, rebuilt 22.1, gap -1.6 (PB-01 2nd: 19.4, 20.1, -0.7)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For PB-02, ERP margin was 11.2 percent and rebuilt margin was 0.1 percent, a gap of 11.1 points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 11.2, rebuilt 0.1, gap 11.1 (PB-02 1st: 27.0, 27.4, -0.3)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-21
+  log: 20261120T224128Z-2026-09-21-nova.jsonl
+  findings:
+  - {quote: "For **PB-01**, the ERP margin is **21.4 %**, the rebuilt margin is **22.8 %**, and the gap is **-1.4** points",
+     verdict: wrong, fact: "margin:PB-01 1st:erp_margin_pct = 21.4, rebuilt 22.8, gap -1.4 (PB-01 2nd: 21.7, 22.4, -0.7)",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "For **PB-02**, the ERP margin is **10.9 %**, the rebuilt margin is **-0.0 %**, and the gap is **10.9** points",
+     verdict: wrong, fact: "margin:PB-02 2nd:erp_margin_pct = 10.9, rebuilt -0.0, gap 10.9 (PB-02 1st: 26.7, 27.7, -1.0)",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-24
+  log: 20261120T224131Z-2026-09-24-nova.jsonl
+  findings:
+  - {quote: "PB-02 second period ERP margin is 13.2%",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 13.2",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-09-25
+  log: 20261120T224133Z-2026-09-25-nova.jsonl
+  findings:
+  - {quote: "PB-02 second period had an ERP margin of 17.7%",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 17.7 (also PB-01 2nd called 'second period')",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-09-28
+  log: 20261120T224134Z-2026-09-28-nova.jsonl
+  findings:
+  - {quote: "PB-01 ERP margin: 23.0% [margin:PB-01 1st:erp_margin_pct]",
+     verdict: wrong, fact: "margin:PB-01 1st: erp 23.0, rebuilt 24.4, gap -1.4, setup 1.09 (PB-01 2nd: 23.8, 24.7, -0.9, 1.1); the next three PB-01 bullets likewise",
+     note: "The manager would read these as PB-01's margins on both shifts; the facts give them for PB-01 1st shift only, and PB-01 2nd has different values."}
+  - {quote: "PB-02 ERP margin: 17.1% [margin:PB-02 2nd:erp_margin_pct]",
+     verdict: wrong, fact: "margin:PB-02 2nd: erp 17.1, rebuilt 7.5, gap 9.6, setup 2.94 (PB-02 1st: 29.1, 30.0, -0.9, 1.13); the next three PB-02 bullets likewise, including setup vs standard 2.94",
+     note: "The manager would read these as PB-02's margins overall; they are PB-02 2nd shift's alone, and PB-02 1st shift's margin is far higher with a gap near zero."}
+- model: nova-v2
+  morning: 2026-09-30
+  log: 20261120T224135Z-2026-09-30-nova.jsonl
+  findings:
+  - {quote: "PB-02 second period had an ERP margin of 22.5%",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 22.5 (also PB-01 2nd called 'second period')",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- model: nova-v2
+  morning: 2026-10-01
+  log: 20261120T224136Z-2026-10-01-nova.jsonl
+  findings:
+  - {quote: "PB-02 second period had an ERP margin of 22.4 percent",
+     verdict: minor, fact: "margin:PB-02 2nd:erp_margin_pct = 22.4",
+     note: "Calls the 2nd shift a 'second period'; the figures are right but the wording obscures that this is a shift."}
+- {model: sonnet-v2, morning: 2026-07-09, log: 20261120T223633Z-2026-07-09-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-07-10
+  log: 20261120T223642Z-2026-07-10-sonnet.jsonl
+  findings:
+  - {quote: "**AS-01** — 2.6% scrap rate [scrap:LSR-01:scrap_pct], wait — **AS-01:** 1.2% (baseline 1.1%)",
+     verdict: wrong, fact: "scrap:AS-01:scrap_pct 1.2 (baseline 1.1); scrap:LSR-01:scrap_pct 2.6",
+     note: "LSR-01's 2.6% written as AS-01's scrap rate, then taken back with 'wait —'; AS-01's was 1.2%."}
+- model: sonnet-v2
+  morning: 2026-07-13
+  log: 20261120T223648Z-2026-07-13-sonnet.jsonl
+  findings:
+  - {quote: "## Margin",
+     verdict: minor, fact: "output:* (ASSY 514, BRAKE 505, DEBURR 594, LASER 616, PEM 413, POWDER 355 pieces; output:plant:jobs_finished 25)",
+     note: "The Output section is missing: the brief goes from Alerts straight to Margin, so the manager gets no piece counts or jobs finished for Friday."}
+- {model: sonnet-v2, morning: 2026-07-16, log: 20261120T223657Z-2026-07-16-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-07-17
+  log: 20261120T223659Z-2026-07-17-sonnet.jsonl
+  findings:
+  - {quote: "180 jobs across all press brakes and all jobs combined [margin:all jobs:jobs]",
+     verdict: minor, fact: "margin:all jobs:jobs 180; brake rows 37+34+43+22 = 136",
+     note: "Awkward wording: 180 is the all-jobs count, not jobs across the press brakes (the four brake-shift rows hold 136); the intended reading (total jobs) is true."}
+- {model: sonnet-v2, morning: 2026-07-20, log: 20261120T223702Z-2026-07-20-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-07-21
+  log: 20261120T223704Z-2026-07-21-sonnet.jsonl
+  findings:
+  - {quote: "The gap has held at 5.1 points, above the 3.0-point threshold",
+     verdict: invented, fact: "none (anomaly:PB-02 2nd:erp_margin_above_rebuilt 5.1, still open since 2026-07-10; no earlier values given)",
+     note: "'Has held at 5.1' tells the manager the gap has been steady at 5.1 over past days; the facts give only today's value and that the alert has been open since Jul 10, not its earlier values."}
+- {model: sonnet-v2, morning: 2026-07-22, log: 20261120T223711Z-2026-07-22-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-23, log: 20261120T223714Z-2026-07-23-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-24, log: 20261120T223716Z-2026-07-24-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-27, log: 20261120T223718Z-2026-07-27-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-28, log: 20261120T223724Z-2026-07-28-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-29, log: 20261120T223728Z-2026-07-29-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-07-30, log: 20261120T223730Z-2026-07-30-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-03, log: 20261120T223740Z-2026-08-03-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-04, log: 20261120T223742Z-2026-08-04-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-08-06
+  log: 20261120T223750Z-2026-08-06-sonnet.jsonl
+  findings:
+  - {quote: "BRAKE / PB-01: 3 scrapped out of 332 pieces, 0.9% (baseline 1.9%), -1.3 standard errors",
+     verdict: minor, fact: "scrap:PB-01 3 of 332, 0.9%; output:BRAKE:scrapped 10 of output:BRAKE:pieces 626",
+     note: "Labelling PB-01 as 'BRAKE' could read as the whole brake work center's scrap (which was 10 of 626, PB-02 included); the numbers are true for PB-01."}
+- {model: sonnet-v2, morning: 2026-08-13, log: 20261120T223808Z-2026-08-13-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-17, log: 20261120T223815Z-2026-08-17-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-19, log: 20261120T223823Z-2026-08-19-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-20, log: 20261120T223827Z-2026-08-20-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-08-21
+  log: 20261120T223828Z-2026-08-21-sonnet.jsonl
+  findings:
+  - {quote: "**LSR-01 ⚠:** 2 machine stops, 21 minutes (baseline 18); 2 stops not logged.",
+     verdict: invented, fact: "stops:LSR-01:stop_minutes 21 (baseline 18); the only LSR-01 alert is anomaly:LSR-01:scrap_above_baseline",
+     note: "The ⚠ the brief uses for alerted figures, on LSR-01's stops (21 minutes against 18); LSR-01's open alert is for scrap, and its stops tripped nothing."}
+- {model: sonnet-v2, morning: 2026-08-26, log: 20261120T223843Z-2026-08-26-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-27, log: 20261120T223843Z-2026-08-27-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-08-28, log: 20261120T223848Z-2026-08-28-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-09-01
+  log: 20261120T223857Z-2026-09-01-sonnet.jsonl
+  findings:
+  - {quote: "17 jobs finished on the plant day [output:plant:jobs_finished].",
+     verdict: minor, fact: "output:* (pieces, good, scrapped, scans for six work centers)",
+     note: "The Output section is missing: no work center's pieces are reported, and the one output fact sits at the end of the Margin section."}
+- {model: sonnet-v2, morning: 2026-09-03, log: 20261120T223902Z-2026-09-03-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-09-04
+  log: 20261120T223905Z-2026-09-04-sonnet.jsonl
+  findings:
+  - {quote: "29 jobs finished on the plant day. [output:plant:jobs_finished]",
+     verdict: minor, fact: "output:* (pieces, good, scrapped, scans for six work centers)",
+     note: "The Output section is missing: no work center's pieces are reported (LASER ran 1068 against a baseline of 678), and the one output fact sits under Margin."}
+- model: sonnet-v2
+  morning: 2026-09-08
+  log: 20261120T223912Z-2026-09-08-sonnet.jsonl
+  findings:
+  - {quote: "**AS-01:** 1.2% today vs. 1.1% baseline",
+     verdict: minor, fact: "plant day Monday 2026-09-07",
+     note: "Every scrap line calls the plant day (Monday) \"today\"; the brief is for Tuesday morning."}
+- model: sonnet-v2
+  morning: 2026-09-09
+  log: 20261120T223918Z-2026-09-09-sonnet.jsonl
+  findings:
+  - {quote: "The ERP margin on PB-02 2nd shift beat the 3.0-point threshold at 8.7 points",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt 8.7 (threshold 3.0); margin:PB-02 2nd:erp_margin_pct 12.6",
+     note: "Garbled: it is the gap between ERP and rebuilt margin that is 8.7 points, not the ERP margin; the margin section states it correctly."}
+  - {quote: "**LSR-01 ⚠**",
+     verdict: invented, fact: "none (no anomaly:LSR-01 fact; the only alert is anomaly:PB-02 2nd:erp_margin_above_rebuilt; stops:LSR-01:stop_minutes 70, baseline 15)",
+     note: "The brief uses the warning sign for the alerted PB-02 2nd shift and puts the same sign on LSR-01's stops, so the manager would think LSR-01's stops tripped an alert; no LSR-01 alert is in the facts."}
+- {model: sonnet-v2, morning: 2026-09-10, log: 20261120T223919Z-2026-09-10-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-09-11, log: 20261120T223927Z-2026-09-11-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-09-17
+  log: 20261120T223942Z-2026-09-17-sonnet.jsonl
+  findings:
+  - {quote: "this alert has fired every day for nearly a month.",
+     verdict: minor, fact: "anomaly:PB-02 2nd:erp_margin_above_rebuilt status Open since at least 2026-08-19",
+     note: "The status is a lower bound (at least since Aug 19); \"nearly a month\" reads it as the whole run, though the heading gives the status correctly."}
+- {model: sonnet-v2, morning: 2026-09-22, log: 20261120T223949Z-2026-09-22-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-09-23, log: 20261120T223957Z-2026-09-23-sonnet.jsonl, findings: []}
+- {model: sonnet-v2, morning: 2026-09-24, log: 20261120T223958Z-2026-09-24-sonnet.jsonl, findings: []}
+- model: sonnet-v2
+  morning: 2026-09-25
+  log: 20261120T224002Z-2026-09-25-sonnet.jsonl
+  findings:
+  - {quote: "**Near or at baseline**",
+     verdict: minor, fact: "scrap:DB-01:scrap_pct 0.6 (baseline 0.9), scrap:DB-01:standard_errors -1.0; scrap:PB-01:standard_errors 0.5 listed as elevated",
+     note: "DB-01, a third below its baseline at -1.0 standard errors, is grouped as near or at baseline while PB-01 at +0.5 is called elevated; the grouping is the model's own, not the facts'."}
+- model: sonnet-v2
+  morning: 2026-09-28
+  log: 20261120T224004Z-2026-09-28-sonnet.jsonl
+  findings:
+  - {quote: "BRAKE: 598 pieces (baseline 598... baseline 544)",
+     verdict: wrong, fact: "output:BRAKE:pieces 598 (baseline 544)",
+     note: "BRAKE's baseline written as 598 (the day's own count), then corrected to 544 in the same parenthesis."}

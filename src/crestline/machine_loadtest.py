@@ -30,7 +30,7 @@ LOADTESTS_DIR = Path("loadtests")  # under the output folder
 def run(out_dir: Path, minutes: int, modes: list[str]) -> Path:
     machine_setup.ensure(gateways=(LOADTEST_GATEWAY,))
     endpoint = machine_setup.endpoint()
-    cert_dir = machine_setup.CERTS_DIR / LOADTEST_GATEWAY
+    cert_dir = machine_setup.certs_dir() / LOADTEST_GATEWAY
 
     def connect(n: int) -> PahoClient:
         return PahoClient(

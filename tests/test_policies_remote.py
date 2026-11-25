@@ -63,6 +63,9 @@ ROWS = [
         "permit_machine_reads",
     ),
     (A, "cycles_by_day", {"machine_id": "PEM-01", "days": 1}, "permit_machine_reads"),
+    (A, "scrap_by_day", {"machine_id": "LSR-01", "days": 31}, "permit_scrap_by_day"),
+    (A, "scrap_by_day", {"machine_id": "LSR-01", "days": 32}, DEFAULT),
+    (A, "scrap_by_day", {"machine_id": "DB-01", "days": 7}, DEFAULT),
     (A, "job_margin", {"days": 31}, "permit_job_margin"),
     (A, "job_margin", {"days": 32}, DEFAULT),
     (A, "job_status", {"job_num": "J104221"}, "permit_job_status"),
@@ -76,6 +79,8 @@ ROWS = [
     (P, "downtime_events", {"machine_id": "PB-01", "days": 31}, "permit_machine_reads"),
     (P, "downtime_events", {"machine_id": "PB-01", "days": 32}, DEFAULT),
     (P, "job_status", {"job_num": "J104221"}, "permit_job_status"),
+    (P, "scrap_by_day", {"machine_id": "PB-02", "days": 31}, "permit_scrap_by_day"),
+    (P, "scrap_by_day", {"machine_id": "PB-02", "days": 32}, DEFAULT),
     (
         P,
         "create_maintenance_request",
@@ -105,6 +110,7 @@ ROWS = [
     (P, "write_tag", {"tag": "PB02.N7:20", "value": "0"}, FORBID),
     (P, "read_tag", {"tag": "PB02.N7:20"}, FORBID),
     (ADMIN, "downtime_events", {"machine_id": "PB-02", "days": 7}, DEFAULT),
+    (ADMIN, "scrap_by_day", {"machine_id": "LSR-01", "days": 7}, DEFAULT),
     (ADMIN, "create_maintenance_request", request(), DEFAULT),
     (ADMIN, "write_tag", {"tag": "PB02.N7:20", "value": "0"}, FORBID),
 ]
@@ -114,6 +120,7 @@ READS = {
     "downtime_events",
     "machine_downtime",
     "cycles_by_day",
+    "scrap_by_day",
     "job_margin",
     "job_status",
 }
@@ -138,8 +145,11 @@ def deployed() -> dict:
     resources = session.client("cloudformation").describe_stack_resources(
         StackName="CrestlineAgent"
     )["StackResources"]
+    outputs = stack_outputs(session)
     return {
-        "mode": stack_outputs(session)["PolicyMode"],
+        "mode": outputs["PolicyMode"],
+        # A second copy of the stack names its roles apart (M5, another region).
+        "role_suffix": outputs.get("RoleSuffix", ""),
         "forbid": any(
             r["LogicalResourceId"] == "PolicyForbidPlantScada" for r in resources
         ),
@@ -197,7 +207,9 @@ def test_the_logs_record_every_decision_and_the_rule_behind_it(replies, deployed
         got = found[request_id]
         rule = expected(rule, deployed)
         assert (
-            got.principal.endswith(f"assumed-role/crestline-{role}")
+            got.principal.endswith(
+                f"assumed-role/crestline-{role}{deployed['role_suffix']}"
+            )
             if role
             else ("crestline-" not in got.principal)
         ), (role, tool, got)
@@ -236,6 +248,6 @@ def test_tools_list_shows_each_role_only_what_it_could_ever_call(
 ):
     names = {t["name"] for t in gateways[role].tools()}
     if deployed["mode"] == "LOG_ONLY":
-        assert len(names) == 9  # nothing is hidden when nothing is enforced
+        assert len(names) == 10  # nothing is hidden when nothing is enforced
     else:
         assert names == SEES[role]

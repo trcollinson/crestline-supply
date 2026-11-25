@@ -1,0 +1,532 @@
+# The brief backtest's narration orphans, read by hand (M5 step 5).
+#
+# The number check fails a brief for any number it can't tie to a fact cited
+# beside it. Most failures are a right number cited in the wrong place (a
+# count in a heading, cited in the paragraph below). These are the ones that
+# would have put a wrong or made-up number in front of the plant manager,
+# read against that morning's facts (<out>/brief/facts/<morning>.json).
+# Every one was refused by the check: the template went out instead.
+#
+#   wrong     a value no fact gives for what the sentence says it is
+#   computed  worked out from facts (the prompt forbids it), arithmetic right
+#   invented  a claim with a number no fact holds
+#
+#   right     a fact's number, cited in the wrong place or not at all
+#
+# Seed 42's backfill (out-m5), brief.sql's thresholds from M5 step 5.
+# brief_scoring.py reads this file; an entry whose orphan isn't in the logs
+# fails the score, so the readings can't drift from the runs.
+
+out: out-m5
+orphans:
+- {model: sonnet, morning: 2026-07-15, number: "1.6%", verdict: wrong,
+   note: "AS-01's scrap baseline was 1.2%"}
+- {model: sonnet, morning: 2026-07-29, number: "1.8%", verdict: wrong,
+   note: "PC-LINE's scrap baseline was 0.9%; 1.8 is its standard errors"}
+- {model: sonnet, morning: 2026-08-07, number: "519", verdict: wrong,
+   note: "AS-01 made 545 pieces; 519 is the laser's"}
+- {model: sonnet, morning: 2026-09-07, number: "1.6%", verdict: wrong,
+   note: "AS-01's scrap was 0.8%"}
+- {model: sonnet, morning: 2026-08-14, number: "1.9%", verdict: computed,
+   note: "BRAKE's 17 scrapped of 872 pieces, as a rate"}
+- {model: sonnet, morning: 2026-08-25, number: "1", verdict: computed,
+   note: "the open alerts, counted ('1 open alert')"}
+- {model: sonnet, morning: 2026-07-20, number: "1 standard error", verdict: invented,
+   note: "'All rates are within 1 standard error of baseline except where noted'"}
+- {model: sonnet, morning: 2026-09-21, number: "+1.0 standard error", verdict: invented,
+   note: "'No machine was above +1.0 standard error'"}
+- {model: nova, morning: 2026-07-14, number: "10 working days", verdict: invented,
+   note: "a margin window of '10 working days'; no fact gives one"}
+- {model: nova, morning: 2026-08-05, number: "20.4 percent", verdict: wrong,
+   note: "PB-01 2nd's ERP margin was 25.9%; 20.4 is PB-02 2nd's"}
+- {model: nova, morning: 2026-08-17, number: "32 minutes", verdict: wrong,
+   note: "PEM-01's machine stop was 31 minutes, cited as such; 32 is the operators' log"}
+- {model: nova, morning: 2026-09-25, number: "8.7 percent", verdict: wrong,
+   note: "called PB-02 2nd's ERP margin (17.7%); 8.7 is the rebuilt margin"}
+# Right numbers the check couldn't tie to a citation beside them.
+- {model: sonnet, morning: 2026-07-08, number: "[anomaly:PB-02 1st:erp_margin_pct]", verdict: right,
+   note: "an ID that doesn't exist; the gap (4.5) and threshold (3.0) are the alert's"}
+- {model: sonnet, morning: 2026-07-16, number: "10 min", verdict: right,
+   note: "LSR-01's usual stop minutes, the baseline of a fact not cited"}
+- {model: sonnet, morning: 2026-07-17, number: "0 stop minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet, morning: 2026-08-04, number: "0 minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet, morning: 2026-08-06, number: "34 min", verdict: right,
+   note: "PB-02's usual stop minutes, the baseline of a fact not cited"}
+- {model: sonnet, morning: 2026-08-12, number: "391", verdict: right,
+   note: "the margin window's jobs, in an uncited aside"}
+- {model: sonnet, morning: 2026-08-19, number: "0 stops", verdict: right,
+   note: "every machine but LSR-01 had none, uncited"}
+- {model: sonnet, morning: 2026-08-21, number: "0 stop minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet, morning: 2026-09-09, number: "0 stop minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet, morning: 2026-09-15, number: "0 stops", verdict: right,
+   note: "PEM-01's stops not logged, a fact not cited"}
+- {model: sonnet, morning: 2026-09-29, number: "28", verdict: right,
+   note: "the margin window written as 'Sep 1–28', which the check doesn't read as dates"}
+- {model: sonnet, morning: 2026-09-30, number: "15 min", verdict: right,
+   note: "LSR-01's usual stop minutes, the baseline of a fact not cited"}
+- {model: sonnet, morning: 2026-09-30, number: "20 min", verdict: right,
+   note: "PB-01's usual stop minutes, the baseline of a fact not cited"}
+- {model: nova, morning: 2026-08-25, number: "4 pieces", verdict: right,
+   note: "POWDER's scrapped pieces, a fact not cited"}
+- {model: nova, morning: 2026-09-18, number: "11.2 percent", verdict: right,
+   note: "PB-02 2nd's ERP margin, a fact not cited"}
+# nova-v2: prompt 2's refused briefs (M5 step 9).
+- {model: nova-v2, morning: 2026-08-17, number: "32 minutes", verdict: wrong,
+   note: "'PEM-01 had 1 stop for 32 minutes': the machine's stop was 31 minutes, cited as such; 32 is the operators' log (the same slip as prompt 1)"}
+- {model: nova-v2, morning: 2026-07-09, number: "3.0 points", verdict: right,
+   note: "the alert's threshold; the anomaly fact holding it not cited"}
+- {model: nova-v2, morning: 2026-07-15, number: "3.0", verdict: right,
+   note: "the alert's threshold; the anomaly fact holding it not cited"}
+- {model: nova-v2, morning: 2026-07-15, number: "0 minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: nova-v2, morning: 2026-07-24, number: "5.7 points", verdict: right,
+   note: "PB-02 2nd's gap, the alert's value, uncited"}
+- {model: nova-v2, morning: 2026-07-24, number: "3.0 points", verdict: right,
+   note: "the alert's threshold; the anomaly fact holding it not cited"}
+- {model: nova-v2, morning: 2026-08-07, number: "3.0", verdict: right,
+   note: "the alert's threshold; the anomaly fact holding it not cited"}
+- {model: nova-v2, morning: 2026-08-26, number: "58 minutes", verdict: right,
+   note: "PB-01's logged minutes, a fact not cited"}
+- {model: nova-v2, morning: 2026-08-26, number: "11 minutes", verdict: right,
+   note: "PB-02's logged minutes, a fact not cited"}
+- {model: nova-v2, morning: 2026-09-17, number: "[output:ASSY:scanned]", verdict: right,
+   note: "an ID that doesn't exist; the number beside it is output:ASSY:scans"}
+- {model: nova-v2, morning: 2026-09-17, number: "10 scans", verdict: right,
+   note: "ASSY's scans, cited under an ID that doesn't exist"}
+- {model: nova-v2, morning: 2026-09-23, number: "10.7 percentage points", verdict: right,
+   note: "PB-02 2nd's gap, uncited; 'PB-02 in the second period' for the 2nd shift"}
+- {model: nova-v2, morning: 2026-09-23, number: "3.0", verdict: right,
+   note: "the alert's threshold; the anomaly fact holding it not cited"}
+- {model: nova-v2, morning: 2026-09-23, number: "[output:ASSY:scanned]", verdict: right,
+   note: "an ID that doesn't exist; the number beside it is output:ASSY:scans"}
+- {model: nova-v2, morning: 2026-09-23, number: "12 scans", verdict: right,
+   note: "ASSY's scans, cited under an ID that doesn't exist"}
+# sonnet-v2: prompt 2's refused briefs (M5 step 9).
+- {model: sonnet-v2, morning: 2026-07-06, number: "July 7, 2026", verdict: wrong,
+   note: "'# Morning Brief — Monday, July 7, 2026': the morning was Monday July 6; July 7 was a Tuesday"}
+- {model: sonnet-v2, morning: 2026-07-07, number: "1.8%", verdict: wrong,
+   note: "'PB-01: 1.5% vs. baseline 1.8%': PB-01's scrap baseline was 0.8%; no fact holds 1.8"}
+- {model: sonnet-v2, morning: 2026-08-07, number: "1.6%", verdict: wrong,
+   note: "'AS-01: 1.3% vs. baseline 1.6%': AS-01's scrap baseline was 1.2%; 1.6 is LSR-01's"}
+- {model: sonnet-v2, morning: 2026-08-10, number: "1.9%", verdict: wrong,
+   note: "'AS-01: 1.9% [scrap:AS-01:scrap_pct] — wait, 0.9%': AS-01's scrap was 0.9%; 1.9 is PEM-01's, corrected mid-sentence in the brief itself"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "1", verdict: computed,
+   note: "the open alerts, counted ('1 open alert — no new alerts today')"}
+- {model: sonnet-v2, morning: 2026-09-07, number: "1", verdict: computed,
+   note: "the open alerts, counted ('1 open alert — no new alerts this morning.')"}
+- {model: sonnet-v2, morning: 2026-09-21, number: "1.0 standard error", verdict: invented,
+   note: "'No station was above 1.0 standard error from its baseline.': no fact gives a 1.0 limit (the rule's is 3.5); the sentence before, 'All work centers were at or below baseline scrap rate', is false too (PC-LINE 1.2% against 1.0%) but has no number to check"}
+- {model: sonnet-v2, morning: 2026-07-08, number: "0 stop minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet-v2, morning: 2026-07-14, number: "14 min", verdict: right,
+   note: "LSR-01's usual stop minutes, the baseline of a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "1.5 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "0.5 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "0.3 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "0.1 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "0.4 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-15, number: "0.6 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-07-31, number: "30", verdict: right,
+   note: "the margin window written as 'July 3–30', which the check doesn't read as dates"}
+- {model: sonnet-v2, morning: 2026-08-05, number: "0", verdict: right,
+   note: "PB-02's and PC-LINE's stops not logged, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "398 jobs", verdict: right,
+   note: "all jobs in the margin window, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "79 jobs", verdict: right,
+   note: "the shift's jobs in the margin window, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "88 jobs", verdict: right,
+   note: "the shift's jobs in the margin window, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "73 jobs", verdict: right,
+   note: "the shift's jobs in the margin window, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-11, number: "54 jobs", verdict: right,
+   note: "the shift's jobs in the margin window, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-12, number: "78 jobs", verdict: right,
+   note: "the shift's jobs in a heading, uncited"}
+- {model: sonnet-v2, morning: 2026-08-12, number: "87 jobs", verdict: right,
+   note: "the shift's jobs in a heading, uncited"}
+- {model: sonnet-v2, morning: 2026-08-12, number: "75 jobs", verdict: right,
+   note: "the shift's jobs in a heading, uncited"}
+- {model: sonnet-v2, morning: 2026-08-12, number: "53 jobs", verdict: right,
+   note: "the shift's jobs in a heading, uncited"}
+- {model: sonnet-v2, morning: 2026-08-12, number: "0 minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "-2.4 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "0.1 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "-3.7 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "-0.3 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "-1.6 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "0.6 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-25, number: "0.3 standard errors", verdict: right,
+   note: "the machine's standard errors, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-08-31, number: "28", verdict: right,
+   note: "the margin window written as 'Aug 3–28', which the check doesn't read as dates"}
+- {model: sonnet-v2, morning: 2026-09-02, number: "2", verdict: right,
+   note: "the morning written as 'Wednesday 2 September 2026', a form the check doesn't read as a date"}
+- {model: sonnet-v2, morning: 2026-09-02, number: "2026", verdict: right,
+   note: "the morning written as 'Wednesday 2 September 2026', a form the check doesn't read as a date"}
+- {model: sonnet-v2, morning: 2026-09-02, number: "1", verdict: right,
+   note: "the plant day and window end written as '1 September' and '1 Sep'"}
+- {model: sonnet-v2, morning: 2026-09-02, number: "5", verdict: right,
+   note: "the margin window written as '5 Aug – 1 Sep'"}
+- {model: sonnet-v2, morning: 2026-09-02, number: "4", verdict: right,
+   note: "the alert open 'since at least 4 Aug', the ledger's 2026-08-04 in another form"}
+- {model: sonnet-v2, morning: 2026-09-14, number: "0 minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet-v2, morning: 2026-09-15, number: "0 stops", verdict: right,
+   note: "PB-02's and PEM-01's stops not logged, a fact not cited"}
+- {model: sonnet-v2, morning: 2026-09-15, number: "0 stop-minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[anomaly:PB-02 2nd:erp\\_margin\\_above\\_rebuilt]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[output:plant:jobs\\_finished]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:all jobs:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:all jobs:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:all jobs:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:all jobs:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "21.9%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "22.4%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-0.5 points", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.39×", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 1st:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 1st:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 1st:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 1st:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "20.6%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "22.1%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-1.6 points", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.09×", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 2nd:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 2nd:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 2nd:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-01 2nd:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "19.4%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "20.1%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-0.7 points", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 1st:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 1st:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 1st:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 1st:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "27.0%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "27.4%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-0.3 points", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.11×", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 2nd:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 2nd:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 2nd:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[margin:PB-02 2nd:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "11.2%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "0.1%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "11.1 points", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "2.92×", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:LSR-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:LSR-01:logged\\_stops]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:LSR-01:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "43 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "15 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1 stop", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "60 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PB-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PB-01:logged\\_stops]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PB-01:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "37 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "20 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "25 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PC-LINE:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PC-LINE:logged\\_stops]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PC-LINE:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "38 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "6 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PB-02:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "0 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "8 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[stops:PEM-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "13 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[context:baseline:working\\_days]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:AS-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:AS-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.4%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.1%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "0.8 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:DB-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:DB-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.2%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "0.9%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "0.9 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:LSR-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:LSR-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "2.0%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "2.4%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-0.8 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PB-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PB-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-1.3 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PB-02:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PB-02:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-0.7 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PC-LINE:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PC-LINE:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.5%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.0%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.0 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PEM-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "[scrap:PEM-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "1.7%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-18, number: "-1.1 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-09-21, number: "0 stop minutes", verdict: right,
+   note: "no stops, so no stop minutes; cited the stop counts only"}
+- {model: sonnet-v2, morning: 2026-09-29, number: "16 min", verdict: right,
+   note: "LSR-01's usual stop minutes, the baseline of a fact not cited"}
+- {model: sonnet-v2, morning: 2026-09-30, number: "0", verdict: right,
+   note: "PC-LINE's and PEM-01's stops, facts not cited in that sentence"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[anomaly:PB-02 2nd:erp\\_margin\\_above\\_rebuilt]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:all jobs:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:all jobs:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:all jobs:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:all jobs:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 1st:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 1st:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 1st:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 1st:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 2nd:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 2nd:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 2nd:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-01 2nd:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 1st:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 1st:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 1st:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 1st:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 2nd:erp\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 2nd:rebuilt\\_margin\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 2nd:gap\\_points]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[margin:PB-02 2nd:setup\\_vs\\_standard]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[output:plant:jobs\\_finished]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[context:baseline:working\\_days]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:LSR-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "15 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "14 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:LSR-01:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "7 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PB-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "0 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "20 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PB-02:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "23 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "13 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PB-02:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "8 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PC-LINE:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "60 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "7 min", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PC-LINE:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PEM-01:stop\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "12 minutes", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[stops:PEM-01:logged\\_minutes]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:AS-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:AS-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "0.8%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "1.0%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "-0.5 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:DB-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:DB-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "0.9%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "-0.2 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:LSR-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:LSR-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "1.2%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "1.6%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "-0.8 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PB-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PB-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "2.0%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "-0.4 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PB-02:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PB-02:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "1.7%", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "-0.6 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PC-LINE:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PC-LINE:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "+0.2 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PEM-01:scrap\\_pct]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "[scrap:PEM-01:standard\\_errors]", verdict: right,
+   note: "a fact ID with Markdown's escaped underscores; the brief passes today's check (0 orphans)"}
+- {model: sonnet-v2, morning: 2026-10-01, number: "+0.6 standard errors", verdict: right,
+   note: "cited under an escaped fact ID; the brief passes today's check (0 orphans)"}

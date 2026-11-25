@@ -31,6 +31,10 @@ select * from crestline_curated.erp_job_operations;
 create or replace view erp_job_costs as
 select * from crestline_curated.erp_job_costs;
 
+-- One row per MES scan the nightly batch posted (M5: the scrap cross-check).
+create or replace view erp_labor_details as
+select * from crestline_curated.erp_labor_details;
+
 
 -- MES: the nightly labor files. Timestamps are plant local time with no
 -- UTC offset, exactly as the MES writes them, and named _local to say so.

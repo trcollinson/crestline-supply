@@ -7,13 +7,17 @@ pipeline code must never import from `sim` (the truth-isolation rule).
 
 import argparse
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import polars as pl
 
 from crestline import query, upload
 from crestline.athena import Athena
+from crestline.brief import facts as brief_facts
+from crestline.brief import write as brief_write
+from crestline.brief.morning import MorningFacts, cached
 from crestline.sim.backfill import run_backfill
 
 MAX_FILES_LISTED = 10
@@ -70,6 +74,12 @@ def _parser() -> argparse.ArgumentParser:
         help="the interface imperfections to simulate (default: mess.yaml)",
     )
     backfill.add_argument(
+        "--scenarios",
+        type=Path,
+        default=Path("scenarios.yaml"),
+        help="the hidden stories to simulate (default: scenarios.yaml)",
+    )
+    backfill.add_argument(
         "--upload",
         action="store_true",
         help=(
@@ -103,6 +113,54 @@ def _parser() -> argparse.ArgumentParser:
     )
     query_command.set_defaults(run=_query)
 
+    up = commands.add_parser(
+        "up",
+        help="deploy the whole platform in one region (M5)",
+        description=(
+            "Build everything the README deploys by hand, in order, in REGION: "
+            "M5's backfill, every stack, the machine replay, Athena, the agent, "
+            "and the morning brief, then check the stacks match the repo. "
+            "Running it again picks up where it stopped. Needs AWS_PROFILE, "
+            "the CDK CLI, and Bedrock access to Claude Sonnet 4.6 and Amazon "
+            "Nova 2 Lite."
+        ),
+    )
+    up.add_argument("--region", required=True, help="the AWS region to build in")
+    up.add_argument(
+        "--out", type=Path, default=Path("out"), help="backfill output (default: out)"
+    )
+    up.add_argument("--email", help="subscribe this address to the morning brief")
+    up.add_argument(
+        "--no-replay",
+        dest="replay",
+        action="store_false",
+        help="skip the 90-day machine replay (about 1.5 h; the machine data stays empty)",
+    )
+    up.add_argument(
+        "--yes",
+        action="store_true",
+        help="deploy without the CDK asking to approve IAM changes",
+    )
+    up.set_defaults(run=_up)
+
+    down = commands.add_parser(
+        "down",
+        help="delete everything `up` built in one region (M5)",
+        description=(
+            "Delete every Crestline stack in REGION (schedules first), the "
+            "gateways' certificates, the ERP's secrets, and the log groups the "
+            "stacks leave behind; then list anything still there, and what "
+            "is left on purpose."
+        ),
+    )
+    down.add_argument("--region", required=True, help="the AWS region to empty")
+    down.add_argument(
+        "--confirm",
+        metavar="REGION",
+        help="the region again, to skip the prompt (it must match --region)",
+    )
+    down.set_defaults(run=_down)
+
     athena = commands.add_parser("athena", help="set up Athena over the raw bucket")
     athena_commands = athena.add_subparsers(
         title="commands", metavar="COMMAND", required=True
@@ -118,6 +176,113 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     setup.set_defaults(run=_athena_setup)
+
+    brief = commands.add_parser("brief", help="the morning brief (M5)")
+    brief_commands = brief.add_subparsers(
+        title="commands", metavar="COMMAND", required=True
+    )
+    brief_facts_command = brief_commands.add_parser(
+        "facts",
+        help="the brief's facts for a morning, from what had arrived by 05:30",
+        description=(
+            "The brief's facts (queries/brief.sql) for the plant day before "
+            "MORNING, from the data as it stood at 05:30 plant time on it "
+            "(queries/as_of.sql): with DuckDB over OUT, or with Athena in the "
+            "brief database (`crestline athena setup` builds it)."
+        ),
+    )
+    brief_facts_command.add_argument(
+        "--morning",
+        type=date.fromisoformat,
+        required=True,
+        help="the morning the brief is read, YYYY-MM-DD",
+    )
+    brief_facts_command.add_argument(
+        "--out", type=Path, default=Path("out"), help="backfill output (default: out)"
+    )
+    brief_facts_command.add_argument(
+        "--engine",
+        choices=["duckdb", "athena"],
+        default="duckdb",
+        help="duckdb reads OUT on this machine; athena the deployed data (default: duckdb)",
+    )
+    brief_facts_command.add_argument(
+        "--csv", type=Path, help="also write every column of the facts to this file"
+    )
+    brief_facts_command.set_defaults(run=_brief_facts)
+
+    brief_write_command = brief_commands.add_parser(
+        "write",
+        help="write a morning's brief: the template, or a model checked against the facts",
+        description=(
+            "Write the brief for MORNING to OUT/brief/MORNING.md: the facts as of "
+            "05:30, each alert new or open since when, then the template, or a "
+            "model's prose (Bedrock Converse, no tools) if it passes the number "
+            "check. Logs to OUT/brief/logs/. Facts are kept in OUT/brief/facts/, "
+            "so earlier mornings computed once are read after."
+        ),
+    )
+    brief_write_command.add_argument(
+        "--morning",
+        type=date.fromisoformat,
+        required=True,
+        help="the morning the brief is read, YYYY-MM-DD",
+    )
+    brief_write_command.add_argument(
+        "--model",
+        choices=["sonnet", "nova", "none"],
+        default="none",
+        help="who writes the prose: sonnet, nova, or none for the template (default)",
+    )
+    brief_write_command.add_argument(
+        "--out", type=Path, default=Path("out"), help="backfill output (default: out)"
+    )
+    brief_write_command.add_argument(
+        "--engine",
+        choices=["duckdb", "athena"],
+        default="duckdb",
+        help="where the facts come from (default: duckdb over OUT)",
+    )
+    brief_write_command.set_defaults(run=_brief_write)
+
+    brief_seed_command = brief_commands.add_parser(
+        "seed",
+        help="fill the deployed brief's ledger store from local facts",
+        description=(
+            "Upload every morning's facts in OUT/brief/facts/ (from `brief write` or "
+            "the backtest's run) to the CrestlineBrief bucket's brief/facts/, so the "
+            "Lambda's ledger reads earlier mornings instead of computing each in "
+            "Athena. Morning files already there are left alone. --before keeps "
+            "the mornings the Lambda will write out, so it computes those in "
+            "Athena itself."
+        ),
+    )
+    brief_seed_command.add_argument(
+        "--out", type=Path, default=Path("out"), help="backfill output (default: out)"
+    )
+    brief_seed_command.add_argument(
+        "--before",
+        type=date.fromisoformat,
+        help="only mornings before this one (the replay clock's start)",
+    )
+    brief_seed_command.set_defaults(run=_brief_seed)
+
+    brief_invoke_command = brief_commands.add_parser(
+        "invoke",
+        help="run the deployed brief once, as its schedule would",
+        description=(
+            "Invoke the CrestlineBrief function and wait: it writes the brief for "
+            "MORNING (or the replay clock's morning), puts it in its bucket, and "
+            "emails it. --plant-orphan adds a number no fact holds to the model's "
+            "reply, so the template must go out."
+        ),
+    )
+    brief_invoke_command.add_argument("--morning", type=date.fromisoformat)
+    brief_invoke_command.add_argument(
+        "--model", choices=["sonnet", "nova", "none"], help="(default: the stack's)"
+    )
+    brief_invoke_command.add_argument("--plant-orphan", action="store_true")
+    brief_invoke_command.set_defaults(run=_brief_invoke)
 
     curate = commands.add_parser(
         "curate",
@@ -183,7 +348,7 @@ def _parser() -> argparse.ArgumentParser:
         help="create the gateways' certificates and upload the Sparkplug schema",
         description=(
             "Create a certificate and private key for each gateway, attached to "
-            "its thing and policy, if missing (keys go to .secrets/machines/, "
+            "its thing and policy, if missing (keys go to .secrets/machines/<region>/, "
             "gitignored), and put the Sparkplug B descriptor set in the stack's "
             "schema bucket. Run after deploying CrestlineMachineIngest. --delete "
             "deletes the certificates and the descriptor set; run it before cdk "
@@ -312,7 +477,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def _backfill(args: argparse.Namespace) -> None:
     summary = run_backfill(
-        args.days, args.end, args.seed, args.out, mess_path=args.mess
+        args.days,
+        args.end,
+        args.seed,
+        args.out,
+        scenarios_path=args.scenarios,
+        mess_path=args.mess,
     )
     print(
         f"Simulated {summary.first_day} .. {summary.last_day} "
@@ -357,13 +527,167 @@ def _query(args: argparse.Namespace) -> None:
     )
 
 
+def _up(args: argparse.Namespace) -> None:
+    from crestline import up
+
+    up.up(
+        up.Settings(
+            region=args.region,
+            out=args.out,
+            email=args.email,
+            replay=args.replay,
+            yes=args.yes,
+        )
+    )
+
+
+def _down(args: argparse.Namespace) -> None:
+    from crestline import up
+
+    # Deleting a region's stacks can't be undone: type its name to go on.
+    confirm = args.confirm or input(
+        f"This deletes every Crestline stack and its data in {args.region}. "
+        "Type the region to go on: "
+    )
+    if confirm.strip() != args.region:
+        raise SystemExit("Not confirmed: nothing deleted")
+    up.down(args.region)
+
+
 def _athena_setup(args: argparse.Namespace) -> None:
     athena = Athena.from_stack()
     scanned = athena.setup()
     print(
-        f"Created the raw tables, source views, machine views, and the margin and downtime views in {athena.database} "
+        f"Created the raw tables, source views, machine views, and the margin, downtime, and scrap views in {athena.database} "
         f"(workgroup {athena.workgroup}): {_megabytes(scanned)} scanned"
     )
+    if athena.brief_database is None:
+        print("No brief database on the foundation stack: skipped the brief's views")
+        return
+    # Set to today's morning at the plant, as the daily brief would be;
+    # `crestline brief facts` moves it.
+    scanned = brief_facts.setup_athena(
+        athena, datetime.now(ZoneInfo("America/Denver")).date()
+    )
+    print(
+        f"Created the brief's views, as of a morning, in {athena.brief_database}: "
+        f"{_megabytes(scanned)} scanned"
+    )
+
+
+def _brief_write(args: argparse.Namespace) -> None:
+    if args.engine == "duckdb":
+        connection = None
+
+        def compute(morning: date) -> MorningFacts:
+            nonlocal connection
+            if connection is None:
+                connection = brief_facts.connect(args.out, morning)
+            return MorningFacts.from_frame(
+                brief_facts.facts(connection, morning), morning
+            )
+    else:
+        athena = Athena.from_stack()
+
+        def compute(morning: date) -> MorningFacts:
+            frame = brief_facts.athena_facts(athena, morning).frame
+            return MorningFacts.from_frame(frame, morning)
+
+    brief_dir = args.out / "brief"
+    written = brief_write.write(
+        args.morning,
+        cached(compute, brief_dir / "facts"),
+        brief_dir,
+        model=None if args.model == "none" else args.model,
+    )
+    print(written.text)
+    print(f"--- {written.version}: {written.reason}")
+    if written.narration:
+        usage = written.narration.usage
+        print(
+            f"{written.narration.model}: {usage.get('inputTokens')} tokens in, "
+            f"{usage.get('outputTokens')} out, {written.narration.ms / 1000:.1f} s"
+        )
+    if written.model_check and not written.model_check.passed:
+        for orphan in written.model_check.orphans:
+            print(f"  orphan {orphan}")
+    print(f"Brief: {written.path}\nLog: {written.log}")
+
+
+def _brief_seed(args: argparse.Namespace) -> None:
+    import boto3
+
+    from crestline.stack import BRIEF_STACK_NAME, stack_outputs
+
+    bucket = stack_outputs(BRIEF_STACK_NAME)["BriefBucketName"]
+    s3 = boto3.client("s3")
+    have = {
+        item["Key"]
+        for page in s3.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Prefix="brief/facts/"
+        )
+        for item in page.get("Contents", [])
+    }
+    sent = 0
+    for path in sorted((args.out / "brief" / "facts").glob("*.json")):
+        if args.before and date.fromisoformat(path.stem) >= args.before:
+            continue
+        key = f"brief/facts/{path.name}"
+        if key not in have:
+            s3.upload_file(str(path), bucket, key)
+            sent += 1
+    print(
+        f"{sent} mornings' facts to s3://{bucket}/brief/facts/ ({len(have)} there already)"
+    )
+
+
+def _brief_invoke(args: argparse.Namespace) -> None:
+    import json
+
+    import boto3
+    from botocore.config import Config
+
+    from crestline.stack import BRIEF_STACK_NAME, stack_outputs
+
+    name = stack_outputs(BRIEF_STACK_NAME)["BriefFunctionName"]
+    event = {
+        key: value
+        for key, value in (
+            ("morning", args.morning and args.morning.isoformat()),
+            ("model", args.model),
+            ("plant_orphan", args.plant_orphan or None),
+        )
+        if value is not None
+    }
+    client = boto3.client(
+        "lambda", config=Config(read_timeout=960, retries={"max_attempts": 0})
+    )
+    reply = client.invoke(FunctionName=name, Payload=json.dumps(event).encode())
+    payload = json.loads(reply["Payload"].read())
+    if reply.get("FunctionError"):
+        raise SystemExit(f"the brief failed: {json.dumps(payload, indent=1)}")
+    print(json.dumps(payload, indent=1))
+
+
+def _brief_facts(args: argparse.Namespace) -> None:
+    if args.engine == "duckdb":
+        found = brief_facts.facts(brief_facts.connect(args.out, args.morning))
+        footer = f"DuckDB over {args.out}"
+    else:
+        athena = Athena.from_stack()
+        result = brief_facts.athena_facts(athena, args.morning)
+        found = result.frame
+        footer = (
+            f"Athena, {athena.brief_database}: {result.seconds:.1f} s, "
+            f"{_megabytes(result.bytes_scanned)} scanned"
+        )
+    if args.csv:
+        found.write_csv(args.csv)
+    plant_day = found["plant_day"][0] if found.height else "none"
+    print(f"Morning {args.morning}, plant day {plant_day}: {found.height} facts")
+    with pl.Config(tbl_rows=-1, tbl_cols=-1, tbl_width_chars=200, fmt_str_lengths=60):
+        print(found.select("fact_id", "value", "unit", "baseline"))
+    print(footer)
 
 
 def _curate(args: argparse.Namespace) -> None:
@@ -470,7 +794,7 @@ def _machines_publish(args: argparse.Namespace) -> None:
     )
     print(f"Connections: {connections}")
     clients = publisher.connect(
-        machine_setup.endpoint(), machine_setup.CERTS_DIR, connections
+        machine_setup.endpoint(), machine_setup.certs_dir(), connections
     )
     name = publisher.replay_name(datetime.now(UTC))
     print(

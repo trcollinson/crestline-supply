@@ -8,7 +8,9 @@ M1 needs four things, and this stack is all of them:
 - the **Glue database** `crestline_raw`, home of the external tables that
   Athena reads the raw files through, and `crestline_fixtures`, where the
   opt-in Athena tests run the same views over small planted fixtures (their
-  views reuse names like `mes_labor`, so they need a database of their own);
+  views reuse names like `mes_labor`, so they need a database of their own),
+  and `crestline_brief`, where the morning brief's views read the sources
+  as they stood on one morning, under the same names (M5);
 - an **Athena workgroup** that refuses any query scanning more than 1 GB.
 
 Idle, this costs next to nothing: two small buckets, a workgroup, and a
@@ -32,6 +34,7 @@ from constructs import Construct
 
 GLUE_DATABASE = "crestline_raw"
 FIXTURE_DATABASE = "crestline_fixtures"
+BRIEF_DATABASE = "crestline_brief"
 ATHENA_WORKGROUP = "crestline"
 
 # Athena bills $5 per TB scanned. The 90-day margin query reads about 44 MB,
@@ -113,6 +116,16 @@ class FoundationStack(cdk.Stack):
             ),
         )
 
+        brief = glue.CfnDatabase(
+            self,
+            "BriefDatabase",
+            catalog_id=self.account,
+            database_input=glue.CfnDatabase.DatabaseInputProperty(
+                name=BRIEF_DATABASE,
+                description="The morning brief's views, over the sources as of one morning",
+            ),
+        )
+
         workgroup = athena.CfnWorkGroup(
             self,
             "WorkGroup",
@@ -143,4 +156,5 @@ class FoundationStack(cdk.Stack):
         cdk.CfnOutput(self, "AthenaResultsBucketName", value=results_bucket.bucket_name)
         cdk.CfnOutput(self, "GlueDatabaseName", value=database.ref)
         cdk.CfnOutput(self, "FixtureDatabaseName", value=fixtures.ref)
+        cdk.CfnOutput(self, "BriefDatabaseName", value=brief.ref)
         cdk.CfnOutput(self, "AthenaWorkGroupName", value=workgroup.ref)

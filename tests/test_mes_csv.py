@@ -14,6 +14,7 @@ DuckDB here; Athena under `pytest -m athena`.
 """
 
 import dataclasses
+import os
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -298,7 +299,8 @@ def athena_backfill() -> Athena:
 def duckdb_backfill() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
-    con.execute("SET file_search_path = ?", [str(REPO_ROOT / "out")])
+    out = REPO_ROOT / os.environ.get("CRESTLINE_OUT", "out")  # as the stacks hold it
+    con.execute("SET file_search_path = ?", [str(out)])
     for statement in statements_for(QUERIES / "sources.sql", ["mes_downtime"]):
         con.execute(statement)
     return con

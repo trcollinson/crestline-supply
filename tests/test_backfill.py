@@ -32,11 +32,14 @@ BUSINESS_KEYS = re.compile(
 )
 
 
-def backfill(out: Path, days: int, end: str) -> str:
+def backfill(out: Path, days: int, end: str, *more: str) -> str:
     stdout = io.StringIO()
     with pytest.MonkeyPatch.context() as mp, contextlib.redirect_stdout(stdout):
         mp.chdir(REPO_ROOT)  # reference/, scenarios.yaml, mess.yaml
-        main(["sim", "backfill", "--days", str(days), "--end", end, "--out", str(out)])
+        main(
+            ["sim", "backfill", "--days", str(days), "--end", end, "--out", str(out)]
+            + list(more)
+        )
     return stdout.getvalue()
 
 
@@ -45,6 +48,27 @@ def out(tmp_path_factory) -> Path:
     out = tmp_path_factory.mktemp("out")
     printed = backfill(out, days=14, end="2026-07-20")
     assert "2026-07-06 .. 2026-07-19" in printed
+    return out
+
+
+# The nozzle from day 1 at 10%, so in two weeks it scraps pieces, gets
+# noticed on the second Monday, and is changed: every part of its story.
+NOZZLE_FROM_DAY_1 = """
+laser_nozzle_degradation:
+  enabled: true
+  start_day: 1
+  ramp_days: 1
+  start_rate: 0.10
+  end_rate: 0.10
+"""
+
+
+@pytest.fixture(scope="module")
+def nozzle_out(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("nozzle_out")
+    scenarios = out.parent / "nozzle_scenarios.yaml"
+    scenarios.write_text(NOZZLE_FROM_DAY_1)
+    backfill(out, 14, "2026-07-20", "--scenarios", str(scenarios))
     return out
 
 
@@ -89,8 +113,14 @@ def test_writes_the_answer_key_and_every_system(out):
     assert last_release <= date(2026, 7, 19)
 
 
-def test_system_outputs_hold_nothing_only_the_answer_key_knows(out):
-    """M1 step 6's done-when: every fact in these files is one a system could see."""
+@pytest.mark.parametrize("run", ["out", "nozzle_out"])
+def test_system_outputs_hold_nothing_only_the_answer_key_knows(run, request):
+    """M1 step 6's done-when: every fact in these files is one a system could see.
+
+    Also with the nozzle scenario on (M5), whose cause, `NOZZLE_WEAR`, the
+    answer key holds and no system may.
+    """
+    out: Path = request.getfixturevalue(run)
     erp_db_rows = []
     with sqlite3.connect(out / "erp" / "erp.db") as db:
         tables = [
@@ -124,6 +154,34 @@ def test_system_outputs_hold_nothing_only_the_answer_key_knows(out):
             assert not MACHINE_IDS.search(text), (name, MACHINE_IDS.search(text))
         if name.startswith("machines"):
             assert not BUSINESS_KEYS.search(text), (name, BUSINESS_KEYS.search(text))
+
+
+def test_the_nozzle_run_has_a_story_for_the_leak_check_to_catch(nozzle_out):
+    truth = nozzle_out / "truth"
+    causes = duckdb.sql(
+        f"select distinct scrap_cause from '{truth}/truth_cycles.parquet'"
+    ).fetchall()
+    events = duckdb.sql(
+        f"select event from '{truth}/truth_events.parquet' order by at_utc"
+    ).fetchall()
+
+    assert ("NOZZLE_WEAR",) in causes
+    assert events == [("ramp_start",), ("peak",), ("nozzle_changed",)]
+
+
+def test_a_rerun_with_the_nozzle_off_removes_its_events(nozzle_out, tmp_path):
+    backfill(
+        tmp_path,
+        14,
+        "2026-07-20",
+        "--scenarios",
+        str(nozzle_out.parent / "nozzle_scenarios.yaml"),
+    )
+    assert (tmp_path / "truth" / "truth_events.parquet").exists()
+
+    backfill(tmp_path, days=14, end="2026-07-20")
+
+    assert not (tmp_path / "truth" / "truth_events.parquet").exists()
 
 
 def test_a_shorter_rerun_leaves_no_stale_files(tmp_path):

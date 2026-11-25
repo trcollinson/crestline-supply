@@ -1,0 +1,19 @@
+# M5's backfill: scenarios.yaml with the degrading laser nozzle switched on.
+#   uv run crestline sim backfill --days 90 --end 2026-10-01 --seed 42 \
+#     --out ./out --scenarios eval/scenarios_nozzle.yaml
+# Every M5 number is quoted from this run; it is a separate run of the same
+# plant, so M1 to M4's numbers move a little in it (M5 step 0).
+
+pb02_second_shift_setups:
+  enabled: true
+  setup_multiplier: 2.8
+
+laser_nozzle_degradation:
+  enabled: true
+  start_day: 41
+  ramp_days: 10
+  start_rate: 0.01
+  end_rate: 0.09
+  noticed_weekly_rate: 0.05
+  nozzle_change_minutes: [30, 90]
+  max_ramp_working_days: 15

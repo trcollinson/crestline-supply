@@ -1,11 +1,16 @@
 """The data-shape checks (pipelines/checks): each passes on good data and trips on a planted breach."""
 
 import json
+from pathlib import Path
 
+import duckdb
 import pytest
 
 from checks import shape
 from checks.aws import ChecksFailed, run_checks
+from crestline.athena import split_statements
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 JOBS = next(s for s in shape.ERP_SHAPES if s.table == "erp_jobs")
 
@@ -84,6 +89,52 @@ def test_brake_strokes_that_drift_from_mes_pieces_breach():
         Script({"machine_counts": [["64", "1", "57"]]}), "x"
     )
     assert "on 1 of 64 days" in breach.detail
+
+
+def brake_check_on(strokes: dict[str, int], pieces: dict[str, int]) -> tuple:
+    """brake_strokes_sql on DuckDB over planted rows: strokes and pieces per
+    plant day (noon, plant time)."""
+    con = duckdb.connect()
+    sources = (REPO_ROOT / "queries" / "sources.sql").read_text()
+    [macro] = [s for s in split_statements(sources) if "macro with_timezone" in s]
+    con.execute(macro)
+    con.execute(
+        "create table machine_counts as select * from (values ('PB-01', timestamp '2000-01-01', 0))"
+        " as t (machine_id, counted_at_utc, cycles) where false"
+    )
+    con.execute(
+        "create table mes_labor as select * from (values ('BRAKE', timestamp '2000-01-01', 0, 0))"
+        " as t (work_center, scan_on_local, qty_good, qty_scrap) where false"
+    )
+    for day, count in strokes.items():
+        # 18:00 UTC is noon in Denver (daylight time).
+        con.execute(
+            "insert into machine_counts values ('PB-02', cast(? as timestamp) + interval 18 hour, ?)",
+            [day, count],
+        )
+    for day, count in pieces.items():
+        con.execute(
+            "insert into mes_labor values ('BRAKE', cast(? as timestamp) + interval 7 hour, ?, 0)",
+            [day, count],
+        )
+    return con.sql(shape.brake_strokes_sql("main")).fetchone()
+
+
+def test_the_newest_day_of_scans_is_not_checked():
+    """Its scans left open arrive tomorrow, its strokes already have (M5 step 2)."""
+    days, off, _worst = brake_check_on(
+        strokes={"2026-09-29": 400, "2026-09-30": 392},
+        pieces={"2026-09-29": 400, "2026-09-30": 361},
+    )
+    assert (days, off) == (1, 0)
+
+
+def test_an_earlier_day_off_still_breaches():
+    days, off, worst = brake_check_on(
+        strokes={"2026-09-28": 400, "2026-09-29": 400, "2026-09-30": 392},
+        pieces={"2026-09-28": 350, "2026-09-29": 400, "2026-09-30": 361},
+    )
+    assert (days, off, worst) == (2, 1, 50)
 
 
 def test_a_breach_fails_the_run_and_the_baseline_is_still_saved():

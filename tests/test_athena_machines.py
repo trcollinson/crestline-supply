@@ -1,6 +1,7 @@
 """Athena equals DuckDB on the machine data, cell for cell (M3 step 8).
 
-The machine SQL (queries/machines.sql, margin_gap.sql, downtime.sql) runs
+The machine SQL (queries/machines.sql, margin_gap.sql, downtime.sql, and
+M5's scrap.sql) runs
 unchanged on both engines. DuckDB reads the backfill's machine files in
 ./out; Athena reads the same messages after they went through AWS IoT Core,
 Firehose, and the curate step into the curated tables (the newest replay of
@@ -12,6 +13,7 @@ deployed, the 90-day replay published and curated, and `crestline athena
 setup` run; it rebuilds the views from this checkout first.
 """
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,7 +26,8 @@ from crestline.athena import Athena
 pytestmark = pytest.mark.athena
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUT = REPO_ROOT / "out"
+# The backfill the stacks hold: CRESTLINE_OUT=out-m5 for M5's, in us-east-1.
+OUT = REPO_ROOT / os.environ.get("CRESTLINE_OUT", "out")
 QUERIES = REPO_ROOT / "queries"
 
 # Each result compared, and the columns that order it.
@@ -48,6 +51,11 @@ RESULTS = {
                cast(started_at_utc as varchar) as started_utc,
                cast(ended_at_utc as varchar) as ended_utc
         from machine_downtime""",
+    # M5: scrap per machine-day, MES beside the ERP (brakes by attribution).
+    "scrap_by_day": """
+        select cast(work_date as varchar) as work_date, work_center, machine_id,
+               scans, pieces, scrapped, scrap_pct, erp_scrapped
+        from scrap_by_day""",
 }
 
 
@@ -77,7 +85,7 @@ def normalized(frame: pl.DataFrame) -> pl.DataFrame:
 def athena() -> Athena:
     athena = Athena.from_stack()
     athena.setup(QUERIES)
-    for name in ("margin_gap", "downtime"):
+    for name in ("margin_gap", "downtime", "scrap"):
         athena.run_file(QUERIES / f"{name}.sql")
     return athena
 
@@ -86,6 +94,7 @@ def athena() -> Athena:
 def duckdb():
     con = query.connect(OUT, QUERIES)
     query.run(con, "downtime", QUERIES).fetchall()
+    query.run(con, "scrap", QUERIES).fetchall()
     return con
 
 
